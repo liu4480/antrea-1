@@ -26,6 +26,7 @@ import (
 )
 
 var _, mcastCIDR, _ = net.ParseCIDR("224.0.0.0/4")
+var mcastAllHosts = net.ParseIP("224.0.0.1").To4()
 
 type featureMulticast struct {
 	cookieAllocator cookie.Allocator
@@ -73,6 +74,32 @@ func (f *featureMulticast) initFlows() []binding.Flow {
 func (f *featureMulticast) replayFlows() []binding.Flow {
 	// Get cached flows.
 	return getCachedFlows(f.cachedFlows)
+}
+
+func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, blockedPorts map[uint32]bool,
+	querygroup bool, ports ...uint32) error {
+	table := MulticastIGMPIngressTable
+	group := f.bridge.CreateGroupTypeAll(groupID).ResetBuckets()
+	ok := false
+	for i := range ports {
+		if blockedPorts != nil {
+			_, ok = blockedPorts[ports[i]]
+		}
+		bktBuilder := group.Bucket()
+		if ok && querygroup {
+			bktBuilder = bktBuilder.LoadToRegField(McastDropByNPRegMark.GetField(), 1)
+		}
+		group = bktBuilder.
+			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
+			LoadToRegField(TargetOFPortField, ports[i]).
+			ResubmitToTable(table.GetNext()).
+			Done()
+	}
+	if err := group.Add(); err != nil {
+		return fmt.Errorf("error when installing Multicast receiver Group: %w", err)
+	}
+	f.groupCache.Store(groupID, group)
+	return nil
 }
 
 func (f *featureMulticast) multicastReceiversGroup(groupID binding.GroupIDType, ports ...uint32) error {

@@ -17,6 +17,7 @@ package networkpolicy
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -418,6 +419,14 @@ func (v *antreaPolicyValidator) createValidate(curObj interface{}, userInfo auth
 	if !allowed {
 		return reason, allowed
 	}
+	reason, allowed = v.validateEgressMulticastAddress(egress)
+	if !allowed {
+		return reason, allowed
+	}
+	reason, allowed = v.validateMulticastIGMP(ingress, egress)
+	if !allowed {
+		return reason, allowed
+	}
 	if err := v.validatePort(ingress, egress); err != nil {
 		return err.Error(), false
 	}
@@ -615,6 +624,74 @@ func (v *antreaPolicyValidator) validateTierForPassAction(tier string, ingress, 
 	return "", true
 }
 
+func (v *antreaPolicyValidator) validateEgressMulticastAddress(egressRule []crdv1alpha1.Rule) (string, bool) {
+	for _, r := range egressRule {
+		multicast := false
+		unicast := false
+		otherSelectors := false
+		for _, to := range r.To {
+			if to.IPBlock == nil {
+				continue
+			}
+			toIPAddr, _, err := net.ParseCIDR(to.IPBlock.CIDR)
+			if err != nil {
+				return fmt.Sprintf("invalid multicast ip address (to.IPBlock.CIDR): %v", err.Error()), false
+			}
+			if toIPAddr.IsMulticast() {
+				multicast = true
+			} else {
+				unicast = true
+			}
+			if to.PodSelector != nil || to.NamespaceSelector != nil || to.Namespaces != nil ||
+				to.ExternalEntitySelector != nil || to.ServiceAccount != nil || to.NodeSelector != nil {
+				otherSelectors = true
+			}
+		}
+		if multicast && unicast {
+			return fmt.Sprintf("can not set multicast ip address and unicast ip address at the same time"), false
+		}
+		if multicast && otherSelectors {
+			return fmt.Sprintf("can not set multicast ip address and selectors at the same time"), false
+		}
+	}
+	return "", true
+}
+
+func igmpValidation(protocol crdv1alpha1.NetworkPolicyProtocol) (string, bool) {
+	if protocol.IGMP.IGMPType == nil {
+		return fmt.Sprintf("IGMP type not set: %v, expected are: [IGMPQuery: %v IGMPReportV1: %v, IGMPReportV2: %v, IGMPReportV2:%v]",
+			*protocol.IGMP.IGMPType, crdv1alpha1.IGMPQuery, crdv1alpha1.IGMPReportV1, crdv1alpha1.IGMPReportV2, crdv1alpha1.IGMPReportV3), false
+	}
+	if *protocol.IGMP.IGMPType == crdv1alpha1.IGMPQuery && protocol.IGMP.GroupAddress == nil {
+		groupAddress := "224.0.0.1"
+		protocol.IGMP.GroupAddress = &groupAddress
+	}
+	if protocol.IGMP.GroupAddress == nil {
+		return fmt.Sprintf("groupAddress should be set with igmp report"), false
+	}
+	groupIP := net.ParseIP(*protocol.IGMP.GroupAddress)
+	if groupIP.IsMulticast() == false {
+		return fmt.Sprintf("ipaddress %+v(cidr %s) is not multicast",
+			groupIP, protocol.IGMP.GroupAddress), false
+	}
+
+	return "", true
+}
+
+func (v *antreaPolicyValidator) validateMulticastIGMP(ingressRules, egressRules []crdv1alpha1.Rule) (string, bool) {
+	for _, r := range append(ingressRules, egressRules...) {
+		for _, protocol := range r.Protocols {
+			if protocol.IGMP != nil {
+				reason, allowed := igmpValidation(protocol)
+				if !allowed {
+					return reason, allowed
+				}
+			}
+		}
+	}
+	return "", true
+}
+
 // validateFQDNSelectors validates the toFQDN field set in Antrea-native policy egress rules are valid.
 func (v *antreaPolicyValidator) validateFQDNSelectors(egressRules []crdv1alpha1.Rule) (string, bool) {
 	for _, r := range egressRules {
@@ -658,6 +735,14 @@ func (v *antreaPolicyValidator) updateValidate(curObj, oldObj interface{}, userI
 		return reason, allowed
 	}
 	reason, allowed = v.validateFQDNSelectors(egress)
+	if !allowed {
+		return reason, allowed
+	}
+	reason, allowed = v.validateEgressMulticastAddress(egress)
+	if !allowed {
+		return reason, allowed
+	}
+	reason, allowed = v.validateMulticastIGMP(ingress, egress)
 	if !allowed {
 		return reason, allowed
 	}
@@ -759,6 +844,22 @@ func validateAntreaGroupSpec(s crdv1alpha2.GroupSpec) (string, bool) {
 	}
 	if selector+serviceRef+ipBlock+ipBlocks+childGroups > 1 {
 		return errMsg, false
+	}
+	multicast := false
+	unicast := false
+	for _, ipb := range s.IPBlocks {
+		ipaddr, _, err := net.ParseCIDR(ipb.CIDR)
+		if err != nil {
+			continue
+		}
+		if ipaddr.IsMulticast() {
+			multicast = true
+		} else {
+			unicast = true
+		}
+	}
+	if multicast && unicast {
+		return "can not set multicast ipaddress together with unicast ip address", false
 	}
 	return "", true
 }

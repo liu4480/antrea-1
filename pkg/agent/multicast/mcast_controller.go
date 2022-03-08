@@ -46,12 +46,14 @@ const (
 	// How long to wait before retrying the processing of a multicast group change.
 	minRetryDelay = 5 * time.Second
 	maxRetryDelay = 300 * time.Second
+	resyncPeriod  = 0 * time.Minute
 )
 
 var (
 	workerCount uint8 = 2
 	// Use IGMP v1, v2, and v3 query messages to snoop the multicast groups in which local Pods have joined.
 	queryVersions = []uint8{1, 2, 3}
+	igmpGroup     binding.GroupIDType
 )
 
 type mcastGroupEvent struct {
@@ -222,6 +224,9 @@ type Controller struct {
 	installedGroupsMutex sync.RWMutex
 	mRouteClient         *MRouteClient
 	ovsBridgeClient      ovsconfig.OVSBridgeClient
+	queryGroupId         binding.GroupIDType
+	mcastValidator       Validate
+	anpEnabled           bool
 }
 
 func NewMulticastController(ofClient openflow.Client,
@@ -231,9 +236,11 @@ func NewMulticastController(ofClient openflow.Client,
 	multicastSocket RouteInterface,
 	multicastInterfaces sets.String,
 	ovsBridgeClient ovsconfig.OVSBridgeClient,
-	podUpdateSubscriber channel.Subscriber) *Controller {
+	podUpdateSubscriber channel.Subscriber,
+	mcastValidator Validate,
+	anpEnabled bool) *Controller {
 	eventCh := make(chan *mcastGroupEvent, workerCount)
-	groupSnooper := newSnooper(ofClient, ifaceStore, eventCh)
+	groupSnooper := newSnooper(ofClient, ifaceStore, eventCh, anpEnabled)
 	groupCache := cache.NewIndexer(getGroupEventKey, cache.Indexers{
 		podInterfaceIndex: podInterfaceIndexFunc,
 	})
@@ -250,6 +257,8 @@ func NewMulticastController(ofClient openflow.Client,
 		queue:            workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "multicastgroup"),
 		mRouteClient:     multicastRouteClient,
 		ovsBridgeClient:  ovsBridgeClient,
+		mcastValidator:   mcastValidator,
+		anpEnabled:       anpEnabled,
 	}
 	podUpdateSubscriber.Subscribe(c.removeLocalInterface)
 	return c
