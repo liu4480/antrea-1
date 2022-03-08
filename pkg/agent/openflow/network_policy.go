@@ -58,6 +58,7 @@ var (
 	MatchICMPCode       = types.NewMatchKey(binding.ProtocolICMP, types.ICMPAddr, "icmp_code")
 	MatchICMPv6Type     = types.NewMatchKey(binding.ProtocolICMPv6, types.ICMPAddr, "icmpv6_type")
 	MatchICMPv6Code     = types.NewMatchKey(binding.ProtocolICMPv6, types.ICMPAddr, "icmpv6_code")
+	MatchIGMPDstIP      = types.NewMatchKey(binding.ProtocolIGMP, types.IPAddr, "nw_dst")
 	MatchServiceGroupID = types.NewMatchKey(binding.ProtocolIP, types.ServiceGroupIDAddr, "reg7[0..31]")
 	Unsupported         = types.NewMatchKey(binding.ProtocolIP, types.UnSupported, "unknown")
 
@@ -1016,18 +1017,34 @@ func (f *featureNetworkPolicy) calculateActionFlowChangesForRule(rule *types.Pol
 		// Install action flows.
 		var actionFlows []binding.Flow
 		var metricFlows []binding.Flow
-		if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionDrop {
-			metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress))
-			actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging))
-		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionReject {
-			metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress))
-			actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging))
-		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionPass {
-			actionFlows = append(actionFlows, f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging))
+		if !f.enableMulticast || (f.enableMulticast && rule.TableID != MulticastEgressRuleTable.GetID()) {
+			if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionDrop {
+				metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress))
+				actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging))
+			} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionReject {
+				metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress))
+				actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging))
+			} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionPass {
+				actionFlows = append(actionFlows, f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging))
+			} else {
+				metricFlows = append(metricFlows, f.allowRulesMetricFlows(ruleOfID, isIngress)...)
+				actionFlows = append(actionFlows, f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging)...)
+			}
 		} else {
-			metricFlows = append(metricFlows, f.allowRulesMetricFlows(ruleOfID, isIngress)...)
-			actionFlows = append(actionFlows, f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging)...)
+			if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionDrop {
+				metricFlows = append(metricFlows, f.mcastDenyRuleMetricFlow(ruleOfID, isIngress))
+				actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging))
+			} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionReject {
+				metricFlows = append(metricFlows, f.mcastDenyRuleMetricFlow(ruleOfID, isIngress))
+				actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging))
+			} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionPass {
+				actionFlows = append(actionFlows, f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging))
+			} else {
+				metricFlows = append(metricFlows, f.mcastAllowRuleMetricFlow(ruleOfID, isIngress)...)
+				actionFlows = append(actionFlows, f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging)...)
+			}
 		}
+
 		conj.actionFlows = actionFlows
 		conj.metricFlows = metricFlows
 	}
@@ -1784,6 +1801,8 @@ type featureNetworkPolicy struct {
 	// egressTables map records all IDs of tables related to egress rules.
 	egressTables map[uint8]struct{}
 
+	enableMulticast       bool
+
 	ovsMetersAreSupported bool
 	enableDenyTracking    bool
 	enableAntreaPolicy    bool
@@ -1807,6 +1826,7 @@ func newFeatureNetworkPolicy(
 	ovsMetersAreSupported,
 	enableDenyTracking,
 	enableAntreaPolicy bool,
+	enableMulticast bool,
 	connectUplinkToBridge bool) *featureNetworkPolicy {
 	return &featureNetworkPolicy{
 		cookieAllocator:          cookieAllocator,
@@ -1814,6 +1834,7 @@ func newFeatureNetworkPolicy(
 		bridge:                   bridge,
 		globalConjMatchFlowCache: make(map[string]*conjMatchFlowContext),
 		policyCache:              cache.NewIndexer(policyConjKeyFunc, cache.Indexers{priorityIndex: priorityIndexFunc}),
+		enableMulticast:          enableMulticast,
 		ovsMetersAreSupported:    ovsMetersAreSupported,
 		enableDenyTracking:       enableDenyTracking,
 		enableAntreaPolicy:       enableAntreaPolicy,
@@ -1826,6 +1847,9 @@ func (f *featureNetworkPolicy) initFlows() []binding.Flow {
 	f.egressTables = map[uint8]struct{}{EgressRuleTable.GetID(): {}, EgressDefaultTable.GetID(): {}}
 	if f.enableAntreaPolicy {
 		f.egressTables[AntreaPolicyEgressRuleTable.GetID()] = struct{}{}
+		if f.enableMulticast {
+			f.egressTables[MulticastEgressRuleTable.GetID()] = struct{}{}
+		}
 	}
 	var flows []binding.Flow
 	flows = append(flows, f.establishedConnectionFlows()...)

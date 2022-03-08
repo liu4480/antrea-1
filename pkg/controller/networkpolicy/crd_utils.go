@@ -61,6 +61,30 @@ func toAntreaServicesForCRD(npPorts []v1alpha1.NetworkPolicyPort, npProtocols []
 				ICMPCode: npProtocol.ICMP.ICMPCode,
 			})
 		}
+		if npProtocol.IGMP != nil {
+			curProtocol := controlplane.ProtocolIGMP
+			var groupAddress controlplane.IPBlock
+			if npProtocol.IGMP.IGMPType != nil {
+				klog.V(4).Infof("npProtocol.IGMP.IGMPType %s", *npProtocol.IGMP.IGMPType)
+			}
+
+			ipblock, err := toAntreaIPBlockForCRD(npProtocol.IGMP.GroupAddress)
+			if err == nil {
+				groupAddress = *ipblock
+				klog.V(4).Infof("get groupaddress %+v", ipblock.CIDR)
+			}
+			klog.V(4).Infof("get groupaddress %+v %v %+v", npProtocol.IGMP.GroupAddress,
+				npProtocol.IGMP.IGMPType == nil, groupAddress)
+			igmpType := ""
+			if npProtocol.IGMP.IGMPType != nil {
+				igmpType = string(*npProtocol.IGMP.IGMPType)
+			}
+			antreaServices = append(antreaServices, controlplane.Service{
+				Protocol: &curProtocol,
+				IGMPType: &igmpType,
+				GroupAddress: &groupAddress,
+			})
+		}
 	}
 	return antreaServices, namedPortExists
 }

@@ -271,6 +271,7 @@ type Client interface {
 	InstallMulticastInitialFlows(pktInReason uint8) error
 	// InstallMulticastFlows installs the flow to forward Multicast traffic normally, and output it to antrea-gw0
 	// to ensure it can be forwarded to the external addresses.
+	InstallMulticastIGMPQueryFlow() error
 	InstallMulticastFlows(multicastIP net.IP, groupID binding.GroupIDType) error
 	// UninstallMulticastFlows removes the flow matching the given multicastIP.
 	UninstallMulticastFlows(multicastIP net.IP) error
@@ -293,7 +294,11 @@ type Client interface {
 	// UninstallTrafficControlReturnPortFlow removes the flow to classify the packets from a return port.
 	UninstallTrafficControlReturnPortFlow(returnOFPort uint32) error
 
-	InstallMulticastGroup(ofGroupID binding.GroupIDType, localReceivers []uint32) error
+
+	InstallMulticastGroup(groupID binding.GroupIDType,
+		blockedPorts map[uint32]bool,
+		queryGroup bool,
+		localReceivers []uint32) error
 }
 
 // GetFlowTableStatus returns an array of flow table status.
@@ -723,6 +728,7 @@ func (c *client) generatePipelines() {
 		c.ovsMetersAreSupported,
 		c.enableDenyTracking,
 		c.enableAntreaPolicy,
+		c.enableMulticast,
 		c.connectUplinkToBridge)
 	c.activatedFeatures = append(c.activatedFeatures, c.featureNetworkPolicy)
 	c.traceableFeatures = append(c.traceableFeatures, c.featureNetworkPolicy)
@@ -1114,6 +1120,14 @@ func (c *client) InstallMulticastInitialFlows(pktInReason uint8) error {
 	return c.addFlows(c.featureMulticast.cachedFlows, cacheKey, flows)
 }
 
+func (c *client) InstallMulticastIGMPQueryFlow() error {
+	flows := c.featureMulticast.igmpMetric()
+	cache_key := "multicast_query"
+	c.replayMutex.Lock()
+	defer c.replayMutex.Unlock()
+	return c.addFlows(c.featureMulticast.cachedFlows, cache_key, flows)
+}
+
 func (c *client) InstallMulticastFlows(multicastIP net.IP, groupID binding.GroupIDType) error {
 	flows := c.featureMulticast.localMulticastForwardFlows(multicastIP, groupID)
 	cacheKey := fmt.Sprintf("multicast_%s", multicastIP.String())
@@ -1179,12 +1193,12 @@ func (c *client) UninstallTrafficControlReturnPortFlow(returnOFPort uint32) erro
 	return c.deleteFlows(c.featurePodConnectivity.tcCachedFlows, cacheKey)
 }
 
-func (c *client) InstallMulticastGroup(groupID binding.GroupIDType, localReceivers []uint32) error {
+func (c *client) InstallMulticastGroup(groupID binding.GroupIDType, blockedPorts map[uint32]bool, queryGroup bool, localReceivers []uint32) error {
 	c.replayMutex.RLock()
 	defer c.replayMutex.RUnlock()
 
 	targetPorts := append([]uint32{config.HostGatewayOFPort}, localReceivers...)
-	if err := c.featureMulticast.multicastReceiversGroup(groupID, targetPorts...); err != nil {
+	if err := c.featureMulticast.multicastGroup(groupID, blockedPorts, queryGroup, targetPorts...); err != nil {
 		return err
 	}
 	return nil

@@ -38,145 +38,197 @@ func TestBuildPipeline(t *testing.T) {
 		dualStack: {binding.ProtocolIP, binding.ProtocolIPv6},
 	}
 	for _, tc := range []struct {
-		ipStack        ipStack
-		features       []feature
-		expectedTables map[binding.PipelineID][]*Table
+		ipStack         ipStack
+		enableMulticast bool
+		features        []feature
+		expectedTables  map[binding.PipelineID][]*Table
 	}{
+
 		{
-			ipStack: dualStack,
-			features: []feature{
-				&featurePodConnectivity{ipProtocols: ipStackMap[dualStack]},
-				&featureNetworkPolicy{enableAntreaPolicy: true},
-				&featureService{enableProxy: true, proxyAll: true},
-				&featureEgress{},
+				ipStack:         dualStack,
+				enableMulticast: false,
+				features: []feature{
+					&featurePodConnectivity{ipProtocols: ipStackMap[dualStack]},
+					&featureNetworkPolicy{enableAntreaPolicy: true},
+					&featureService{enableProxy: true, proxyAll: true},
+					&featureEgress{},
+				},
+				expectedTables: map[binding.PipelineID][]*Table{
+					pipelineRoot: {
+						PipelineRootClassifierTable,
+					},
+					pipelineIP: {
+						ClassifierTable,
+						SpoofGuardTable,
+						IPv6Table,
+						SNATConntrackTable,
+						ConntrackTable,
+						ConntrackStateTable,
+						PreRoutingClassifierTable,
+						NodePortMarkTable,
+						SessionAffinityTable,
+						ServiceLBTable,
+						EndpointDNATTable,
+						AntreaPolicyEgressRuleTable,
+						EgressRuleTable,
+						EgressDefaultTable,
+						EgressMetricTable,
+						L3ForwardingTable,
+						EgressMarkTable,
+						L3DecTTLTable,
+						ServiceMarkTable,
+						SNATConntrackCommitTable,
+						L2ForwardingCalcTable,
+						AntreaPolicyIngressRuleTable,
+						IngressRuleTable,
+						IngressDefaultTable,
+						IngressMetricTable,
+						ConntrackCommitTable,
+						L2ForwardingOutTable,
+					},
+					pipelineARP: {
+						ARPSpoofGuardTable,
+						ARPResponderTable,
+					},
+				},
 			},
-			expectedTables: map[binding.PipelineID][]*Table{
-				pipelineRoot: {
-					PipelineRootClassifierTable,
+			{
+				ipStack:         ipv6Only,
+				enableMulticast: false,
+				features: []feature{
+					&featurePodConnectivity{ipProtocols: ipStackMap[ipv6Only]},
+					&featureNetworkPolicy{enableAntreaPolicy: true},
+					&featureService{enableProxy: true, proxyAll: true},
+					&featureEgress{},
 				},
-				pipelineIP: {
-					ClassifierTable,
-					SpoofGuardTable,
-					IPv6Table,
-					SNATConntrackTable,
-					ConntrackTable,
-					ConntrackStateTable,
-					PreRoutingClassifierTable,
-					NodePortMarkTable,
-					SessionAffinityTable,
-					ServiceLBTable,
-					EndpointDNATTable,
-					AntreaPolicyEgressRuleTable,
-					EgressRuleTable,
-					EgressDefaultTable,
-					EgressMetricTable,
-					L3ForwardingTable,
-					EgressMarkTable,
-					L3DecTTLTable,
-					ServiceMarkTable,
-					SNATConntrackCommitTable,
-					L2ForwardingCalcTable,
-					AntreaPolicyIngressRuleTable,
-					IngressRuleTable,
-					IngressDefaultTable,
-					IngressMetricTable,
-					ConntrackCommitTable,
-					L2ForwardingOutTable,
-				},
-				pipelineARP: {
-					ARPSpoofGuardTable,
-					ARPResponderTable,
+				expectedTables: map[binding.PipelineID][]*Table{
+					pipelineRoot: {
+						PipelineRootClassifierTable,
+					},
+					pipelineIP: {
+						ClassifierTable,
+						SpoofGuardTable,
+						IPv6Table,
+						SNATConntrackTable,
+						ConntrackTable,
+						ConntrackStateTable,
+						PreRoutingClassifierTable,
+						NodePortMarkTable,
+						SessionAffinityTable,
+						ServiceLBTable,
+						EndpointDNATTable,
+						AntreaPolicyEgressRuleTable,
+						EgressRuleTable,
+						EgressDefaultTable,
+						EgressMetricTable,
+						L3ForwardingTable,
+						EgressMarkTable,
+						L3DecTTLTable,
+						ServiceMarkTable,
+						SNATConntrackCommitTable,
+						L2ForwardingCalcTable,
+						AntreaPolicyIngressRuleTable,
+						IngressRuleTable,
+						IngressDefaultTable,
+						IngressMetricTable,
+						ConntrackCommitTable,
+						L2ForwardingOutTable,
+					},
 				},
 			},
-		},
+			{
+				ipStack:         ipv4Only,
+				enableMulticast: false,
+				features: []feature{
+					&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only]},
+					&featureNetworkPolicy{enableAntreaPolicy: true},
+					&featureService{enableProxy: false},
+					&featureEgress{},
+				},
+				expectedTables: map[binding.PipelineID][]*Table{
+					pipelineRoot: {
+						PipelineRootClassifierTable,
+					},
+					pipelineIP: {
+						ClassifierTable,
+						SpoofGuardTable,
+						ConntrackTable,
+						ConntrackStateTable,
+						DNATTable,
+						AntreaPolicyEgressRuleTable,
+						EgressRuleTable,
+						EgressDefaultTable,
+						EgressMetricTable,
+						L3ForwardingTable,
+						L3DecTTLTable,
+						L2ForwardingCalcTable,
+						AntreaPolicyIngressRuleTable,
+						IngressRuleTable,
+						IngressDefaultTable,
+						IngressMetricTable,
+						ConntrackCommitTable,
+						L2ForwardingOutTable,
+					},
+					pipelineARP: {
+						ARPSpoofGuardTable,
+						ARPResponderTable,
+					},
+				},
+			},
+			{
+				ipStack:         ipv4Only,
+				enableMulticast: false,
+				features: []feature{
+					&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only]},
+					&featureNetworkPolicy{enableAntreaPolicy: true},
+					&featureService{enableProxy: true, proxyAll: false},
+					&featureEgress{},
+				},
+				expectedTables: map[binding.PipelineID][]*Table{
+					pipelineRoot: {
+						PipelineRootClassifierTable,
+					},
+					pipelineIP: {
+						ClassifierTable,
+						SpoofGuardTable,
+						SNATConntrackTable,
+						ConntrackTable,
+						ConntrackStateTable,
+						PreRoutingClassifierTable,
+						SessionAffinityTable,
+						ServiceLBTable,
+						EndpointDNATTable,
+						AntreaPolicyEgressRuleTable,
+						EgressRuleTable,
+						EgressDefaultTable,
+						EgressMetricTable,
+						L3ForwardingTable,
+						EgressMarkTable,
+						L3DecTTLTable,
+						ServiceMarkTable,
+						SNATConntrackCommitTable,
+						L2ForwardingCalcTable,
+						AntreaPolicyIngressRuleTable,
+						IngressRuleTable,
+						IngressDefaultTable,
+						IngressMetricTable,
+						ConntrackCommitTable,
+						L2ForwardingOutTable,
+					},
+					pipelineARP: {
+						ARPSpoofGuardTable,
+						ARPResponderTable,
+					},
+				},
+			},
 		{
-			ipStack: ipv6Only,
+			ipStack:         ipv4Only,
+			enableMulticast: true,
 			features: []feature{
-				&featurePodConnectivity{ipProtocols: ipStackMap[ipv6Only]},
-				&featureNetworkPolicy{enableAntreaPolicy: true},
-				&featureService{enableProxy: true, proxyAll: true},
-				&featureEgress{},
-			},
-			expectedTables: map[binding.PipelineID][]*Table{
-				pipelineRoot: {
-					PipelineRootClassifierTable,
-				},
-				pipelineIP: {
-					ClassifierTable,
-					SpoofGuardTable,
-					IPv6Table,
-					SNATConntrackTable,
-					ConntrackTable,
-					ConntrackStateTable,
-					PreRoutingClassifierTable,
-					NodePortMarkTable,
-					SessionAffinityTable,
-					ServiceLBTable,
-					EndpointDNATTable,
-					AntreaPolicyEgressRuleTable,
-					EgressRuleTable,
-					EgressDefaultTable,
-					EgressMetricTable,
-					L3ForwardingTable,
-					EgressMarkTable,
-					L3DecTTLTable,
-					ServiceMarkTable,
-					SNATConntrackCommitTable,
-					L2ForwardingCalcTable,
-					AntreaPolicyIngressRuleTable,
-					IngressRuleTable,
-					IngressDefaultTable,
-					IngressMetricTable,
-					ConntrackCommitTable,
-					L2ForwardingOutTable,
-				},
-			},
-		},
-		{
-			ipStack: ipv4Only,
-			features: []feature{
-				&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only]},
-				&featureNetworkPolicy{enableAntreaPolicy: true},
-				&featureService{enableProxy: false},
-				&featureEgress{},
-			},
-			expectedTables: map[binding.PipelineID][]*Table{
-				pipelineRoot: {
-					PipelineRootClassifierTable,
-				},
-				pipelineIP: {
-					ClassifierTable,
-					SpoofGuardTable,
-					ConntrackTable,
-					ConntrackStateTable,
-					DNATTable,
-					AntreaPolicyEgressRuleTable,
-					EgressRuleTable,
-					EgressDefaultTable,
-					EgressMetricTable,
-					L3ForwardingTable,
-					L3DecTTLTable,
-					L2ForwardingCalcTable,
-					AntreaPolicyIngressRuleTable,
-					IngressRuleTable,
-					IngressDefaultTable,
-					IngressMetricTable,
-					ConntrackCommitTable,
-					L2ForwardingOutTable,
-				},
-				pipelineARP: {
-					ARPSpoofGuardTable,
-					ARPResponderTable,
-				},
-			},
-		},
-		{
-			ipStack: ipv4Only,
-			features: []feature{
-				&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only]},
+				&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only], enableMulticast: true},
 				&featureNetworkPolicy{enableAntreaPolicy: true},
 				&featureService{enableProxy: true, proxyAll: false},
-				&featureEgress{},
+				&featureMulticast{},
 			},
 			expectedTables: map[binding.PipelineID][]*Table{
 				pipelineRoot: {
@@ -185,6 +237,7 @@ func TestBuildPipeline(t *testing.T) {
 				pipelineIP: {
 					ClassifierTable,
 					SpoofGuardTable,
+					PipelineIPClassifierTable,
 					SNATConntrackTable,
 					ConntrackTable,
 					ConntrackStateTable,
@@ -197,7 +250,6 @@ func TestBuildPipeline(t *testing.T) {
 					EgressDefaultTable,
 					EgressMetricTable,
 					L3ForwardingTable,
-					EgressMarkTable,
 					L3DecTTLTable,
 					ServiceMarkTable,
 					SNATConntrackCommitTable,
@@ -212,6 +264,14 @@ func TestBuildPipeline(t *testing.T) {
 				pipelineARP: {
 					ARPSpoofGuardTable,
 					ARPResponderTable,
+				},
+				pipelineMulticast: {
+					MulticastIGMPTable,
+					MulticastIGMPMetricTable,
+					MulticastGroupTable,
+					MulticastEgressRuleTable,
+					MulticastEgressMetricTable,
+					MulticastOutputTable,
 				},
 			},
 		},
@@ -219,6 +279,9 @@ func TestBuildPipeline(t *testing.T) {
 		pipelineIDs := []binding.PipelineID{pipelineRoot, pipelineIP}
 		if tc.ipStack != ipv6Only {
 			pipelineIDs = append(pipelineIDs, pipelineARP)
+		}
+		if tc.enableMulticast {
+			pipelineIDs = append(pipelineIDs, pipelineMulticast)
 		}
 		pipelineRequiredTablesMap := make(map[binding.PipelineID]map[*Table]struct{})
 		for _, pipelineID := range pipelineIDs {
@@ -247,10 +310,12 @@ func TestBuildPipeline(t *testing.T) {
 
 			tables := tc.expectedTables[pipelineID]
 			for i := 0; i < len(tables)-1; i++ {
+				fmt.Println(tables[i].GetName(), tables[i].GetID())
 				require.NotNil(t, tables[i].ofTable, "table %q should be initialized", tables[i].name)
 				require.Less(t, tables[i].GetID(), tables[i+1].GetID(), fmt.Sprintf("id of table %q should less than that of table %q", tables[i].GetName(), tables[i+1].GetName()))
 			}
-			require.NotNil(t, tables[len(tables)-1].ofTable, "table %q should be initialized", tables[len(tables)-1].name)
+			//require.NotNil(t, tables[len(tables)-1].ofTable, "table %q should be initialized", tables[len(tables)-1].name)
+			require.NotNil(t, tables, "table %+v should be initialized: ", tables, tc.expectedTables[pipelineID])
 		}
 		reset()
 	}

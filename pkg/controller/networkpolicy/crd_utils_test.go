@@ -30,6 +30,11 @@ import (
 )
 
 func TestToAntreaServicesForCRD(t *testing.T) {
+	 ipb, _ := toAntreaIPBlockForCRD(&crdv1alpha1.IPBlock{
+		CIDR: "224.0.0.1/32",
+	})
+	 query := crdv1alpha1.IGMPQuery
+	 queryStr := string(query)
 	tables := []struct {
 		ports              []crdv1alpha1.NetworkPolicyPort
 		protocols          []crdv1alpha1.NetworkPolicyProtocol
@@ -100,6 +105,29 @@ func TestToAntreaServicesForCRD(t *testing.T) {
 				},
 			},
 			expNamedPortExists: false,
+		},
+		{
+			protocols: []crdv1alpha1.NetworkPolicyProtocol {
+				{
+					IGMP: &crdv1alpha1.IGMPProtocol{
+						IGMPType: &query,
+						GroupAddresses: []crdv1alpha1.IPBlock{
+							crdv1alpha1.IPBlock{
+								CIDR: "224.0.0.1/32",
+							},
+						},
+					},
+				},
+			},
+			expServices: []controlplane.Service{
+				{
+					Protocol: &protocolIGMP,
+					IGMPType: &queryStr,
+					GroupAddresses: []controlplane.IPBlock{
+						*ipb,
+					},
+				},
+			},
 		},
 		{
 			protocols: []crdv1alpha1.NetworkPolicyProtocol{

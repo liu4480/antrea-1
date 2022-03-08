@@ -91,7 +91,7 @@ func TestAddGroupMemberStatus(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, mgroup.String(), key)
 	mockIfaceStore.EXPECT().GetInterfaceByName(if1.InterfaceName).Return(if1, true)
-	mockOFClient.EXPECT().InstallMulticastGroup(gomock.Any(), gomock.Any())
+	mockOFClient.EXPECT().InstallMulticastGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any())
 	mockOFClient.EXPECT().InstallMulticastFlows(mgroup, gomock.Any()).Times(1)
 	mockMulticastSocket.EXPECT().MulticastInterfaceJoinMgroup(mgroup.To4(), nodeIf1IP.To4(), if1.InterfaceName).Times(1)
 	err = mctrl.syncGroup(key)
@@ -189,7 +189,7 @@ func TestCheckLastMember(t *testing.T) {
 		mctrl.queue.Forget(obj)
 	}
 	mockIfaceStore.EXPECT().GetInterfaceByName(if1.InterfaceName).Return(if1, true).Times(1)
-	mockOFClient.EXPECT().InstallMulticastGroup(gomock.Any(), gomock.Any()).Times(1)
+	mockOFClient.EXPECT().InstallMulticastGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 	for _, tc := range []struct {
 		ev     *mcastGroupEvent
 		exists bool
@@ -364,7 +364,7 @@ func newMockMulticastController(t *testing.T) *Controller {
 	mockOFClient.EXPECT().RegisterPacketInHandler(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 	groupAllocator := openflow.NewGroupAllocator(false)
 	podUpdateSubscriber := channel.NewSubscribableChannel("PodUpdate", 100)
-	mctrl := NewMulticastController(mockOFClient, groupAllocator, nodeConfig, mockIfaceStore, mockMulticastSocket, sets.NewString(), ovsClient, podUpdateSubscriber)
+	mctrl := NewMulticastController(mockOFClient, groupAllocator, nodeConfig, mockIfaceStore, mockMulticastSocket, sets.NewString(), ovsClient, podUpdateSubscriber,nil)
 	return mctrl
 }
 

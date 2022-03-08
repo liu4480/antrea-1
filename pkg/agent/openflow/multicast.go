@@ -26,6 +26,7 @@ import (
 )
 
 var _, mcastCIDR, _ = net.ParseCIDR("224.0.0.0/4")
+var mcastAllHosts   = net.ParseIP("224.0.0.1").To4()
 
 type featureMulticast struct {
 	cookieAllocator cookie.Allocator
@@ -75,20 +76,48 @@ func (f *featureMulticast) replayFlows() []binding.Flow {
 	return getCachedFlows(f.cachedFlows)
 }
 
-func (f *featureMulticast) multicastReceiversGroup(groupID binding.GroupIDType, ports ...uint32) error {
+func (f *featureMulticast) multicastGroup(groupID binding.GroupIDType, blockedPorts map[uint32]bool,
+	querygroup bool, ports ...uint32) error {
+	var table *Table
+	if querygroup {
+		table = MulticastIGMPTable
+	} else {
+		table = MulticastGroupTable
+	}
 	group := f.bridge.CreateGroupTypeAll(groupID).ResetBuckets()
+	ok := false
 	for i := range ports {
-		group = group.Bucket().
-			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
-			LoadToRegField(TargetOFPortField, ports[i]).
-			ResubmitToTable(MulticastRoutingTable.GetNext()).
-			Done()
+		if  blockedPorts != nil {
+			_, ok = blockedPorts[ports[i]]
+		}
+		if ok && querygroup {
+			group = group.Bucket().
+				LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
+				LoadToRegField(TargetOFPortField, ports[i]).
+				LoadToRegField(McastDropByNPRegMark, 1).
+				ResubmitToTable(table.GetNext()).
+				Done()
+		} else {
+			group = group.Bucket().
+				LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
+				LoadToRegField(TargetOFPortField, ports[i]).
+				ResubmitToTable(table.GetNext()).
+				Done()
+		}
 	}
 	if err := group.Add(); err != nil {
 		return fmt.Errorf("error when installing Multicast receiver Group: %w", err)
 	}
 	f.groupCache.Store(groupID, group)
 	return nil
+}
+
+func (f *featureMulticast) multicastReceiversGroup(groupID binding.GroupIDType, blockedPorts map[uint32]bool, ports ...uint32) error {
+	return f.multicastGroup(groupID, blockedPorts, false, ports...)
+}
+
+func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, blockedPorts map[uint32]bool, ports ...uint32) error {
+	return f.multicastGroup(groupID, blockedPorts, true, ports...)
 }
 
 func (f *featureMulticast) multicastOutputFlow(cookieID uint64) binding.Flow {

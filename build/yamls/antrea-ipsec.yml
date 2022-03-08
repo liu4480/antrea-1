@@ -976,6 +976,7 @@ spec:
                           type: object
                           oneOf:
                             - required: [icmp]
+                            - required: [igmp]
                           properties:
                             icmp:
                               type: object
@@ -988,6 +989,17 @@ spec:
                                   type: integer
                                   minimum: 0
                                   maximum: 255
+                            igmp:
+                              type: object
+                              properties:
+                                igmpType:
+                                  type: string
+                                groupAddress:
+                                  type: object
+                                  properties:
+                                    cidr:
+                                      type: string
+                                      format: cidr
                       from:
                         type: array
                         items:
@@ -1189,6 +1201,7 @@ spec:
                           type: object
                           oneOf:
                             - required: [icmp]
+                            - required: [igmp]
                           properties:
                             icmp:
                               type: object
@@ -1201,6 +1214,17 @@ spec:
                                   type: integer
                                   minimum: 0
                                   maximum: 255
+                            igmp:
+                              type: object
+                              properties:
+                                igmpType:
+                                  type: string
+                                groupAddress:
+                                  type: object
+                                  properties:
+                                    cidr:
+                                      type: string
+                                      format: cidr
                       to:
                         type: array
                         items:

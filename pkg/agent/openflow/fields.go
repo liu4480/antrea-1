@@ -131,10 +131,11 @@ var (
 	TrafficControlMirrorRegMark   = binding.NewRegMark(TrafficControlActionField, 0b01)
 	TrafficControlRedirectRegMark = binding.NewRegMark(TrafficControlActionField, 0b10)
 
+	McastDropByNPRegMark = binding.NewRegField(4, 24, 24, "McastDropByNP")
 	// reg5(NXM_NX_REG5)
 	// Field to cache the Egress conjunction ID hit by TraceFlow packet.
 	TFEgressConjIDField = binding.NewRegField(5, 0, 31, "TFEgressConjunctionID")
-
+	McastEgressConjIDField = binding.NewRegField(5, 0, 31, "McastEgressConjunctionID")
 	// reg6(NXM_NX_REG6)
 	// Field to store the Ingress conjunction ID hit by TraceFlow packet.
 	TFIngressConjIDField = binding.NewRegField(6, 0, 31, "TFIngressConjunctionID")

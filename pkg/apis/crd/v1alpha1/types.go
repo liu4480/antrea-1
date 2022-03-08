@@ -57,6 +57,7 @@ const (
 // According to code in Antrea agent and controller, default protocol is ICMP if protocol is not inputted by users.
 const (
 	ICMPProtocolNumber int32 = 1
+	IGMPProtocolNumber int32 = 2
 	TCPProtocolNumber  int32 = 6
 	UDPProtocolNumber  int32 = 17
 	SCTPProtocolNumber int32 = 132
@@ -72,6 +73,7 @@ var ProtocolsToString = map[int32]string{
 	TCPProtocolNumber:  "TCP",
 	UDPProtocolNumber:  "UDP",
 	ICMPProtocolNumber: "ICMP",
+	IGMPProtocolNumber: "IGMP",
 	SCTPProtocolNumber: "SCTP",
 }
 
@@ -488,6 +490,7 @@ type NetworkPolicyPort struct {
 
 // RuleAction describes the action to be applied on traffic matching a rule.
 type RuleAction string
+type IGMPKind   string
 
 const (
 	// RuleActionAllow describes that the traffic matching the rule must be allowed.
@@ -501,6 +504,9 @@ const (
 	// RuleActionReject indicates that the traffic matching the rule must be rejected and the
 	// client will receive a response.
 	RuleActionReject RuleAction = "Reject"
+
+	IGMPQuery        IGMPKind = "IGMPQuery"
+	IGMPReport       IGMPKind = "IGMPReport"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -609,6 +615,7 @@ type NamespacedName struct {
 // `ports`. All fields should be used as a standalone field.
 type NetworkPolicyProtocol struct {
 	ICMP *ICMPProtocol `json:"icmp,omitempty"`
+	IGMP *IGMPProtocol `json:"igmp,omitempty"`
 }
 
 // ICMPProtocol matches ICMP traffic with specific ICMPType and/or ICMPCode. All
@@ -617,4 +624,10 @@ type NetworkPolicyProtocol struct {
 type ICMPProtocol struct {
 	ICMPType *int32 `json:"icmpType,omitempty"`
 	ICMPCode *int32 `json:"icmpCode,omitempty"`
+}
+
+type IGMPProtocol struct {
+	//add igmp type
+	IGMPType       *IGMPKind `json:"igmpType"`
+	GroupAddress   *IPBlock `json:"groupAddress,omitempty"`
 }
