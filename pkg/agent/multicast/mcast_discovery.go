@@ -55,6 +55,7 @@ type IGMPSnooper struct {
 	ofClient   openflow.Client
 	ifaceStore interfacestore.InterfaceStore
 	eventCh    chan *mcastGroupEvent
+	anpEnabled bool
 }
 
 func (s *IGMPSnooper) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
@@ -103,10 +104,14 @@ func (s *IGMPSnooper) queryIGMP(group net.IP, versions []uint8) error {
 		if err != nil {
 			return err
 		}
-		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, mcastAllHosts, openflow13.P_NORMAL, igmp); err != nil {
+		outPort := uint32(openflow13.P_NORMAL)
+		if s.anpEnabled {
+			outPort = 0
+		}
+		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, mcastAllHosts, outPort, igmp); err != nil {
 			return err
 		}
-		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version)
+		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version, "outPort", outPort)
 	}
 	return nil
 }
@@ -242,8 +247,8 @@ func parseIGMPPacket(pkt protocol.Ethernet) (protocol.IGMPMessage, error) {
 	}
 }
 
-func newSnooper(ofClient openflow.Client, ifaceStore interfacestore.InterfaceStore, eventCh chan *mcastGroupEvent) *IGMPSnooper {
-	d := &IGMPSnooper{ofClient: ofClient, ifaceStore: ifaceStore, eventCh: eventCh}
+func newSnooper(ofClient openflow.Client, ifaceStore interfacestore.InterfaceStore, eventCh chan *mcastGroupEvent, anpEnabled bool) *IGMPSnooper {
+	d := &IGMPSnooper{ofClient: ofClient, ifaceStore: ifaceStore, eventCh: eventCh, anpEnabled: anpEnabled}
 	ofClient.RegisterPacketInHandler(uint8(openflow.PacketInReasonMC), "MulticastGroupDiscovery", d)
 	return d
 }

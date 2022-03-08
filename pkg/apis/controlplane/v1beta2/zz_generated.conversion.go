@@ -1400,6 +1400,8 @@ func autoConvert_v1beta2_Service_To_controlplane_Service(in *Service, out *contr
 	out.EndPort = (*int32)(unsafe.Pointer(in.EndPort))
 	out.ICMPType = (*int32)(unsafe.Pointer(in.ICMPType))
 	out.ICMPCode = (*int32)(unsafe.Pointer(in.ICMPCode))
+	out.IGMPType = (*int32)(unsafe.Pointer(in.IGMPType))
+	out.GroupAddress = (*string)(unsafe.Pointer(in.GroupAddress))
 	return nil
 }
 
@@ -1414,6 +1416,8 @@ func autoConvert_controlplane_Service_To_v1beta2_Service(in *controlplane.Servic
 	out.EndPort = (*int32)(unsafe.Pointer(in.EndPort))
 	out.ICMPType = (*int32)(unsafe.Pointer(in.ICMPType))
 	out.ICMPCode = (*int32)(unsafe.Pointer(in.ICMPCode))
+	out.IGMPType = (*int32)(unsafe.Pointer(in.IGMPType))
+	out.GroupAddress = (*string)(unsafe.Pointer(in.GroupAddress))
 	return nil
 }
 

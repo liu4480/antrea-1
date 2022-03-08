@@ -368,3 +368,13 @@ func NewIPNet(ip net.IP) *net.IPNet {
 	}
 	return &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)}
 }
+
+func CheckIPIsMulticast(ipStr string) (isMulticast bool, err error) {
+	ipAddr := net.ParseIP(ipStr)
+	if ipAddr == nil {
+		isMulticast, err = false, fmt.Errorf("invalid IPaddress")
+	} else {
+		isMulticast, err = ipAddr.IsMulticast(), nil
+	}
+	return
+}

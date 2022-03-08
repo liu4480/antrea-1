@@ -131,6 +131,10 @@ var (
 	TrafficControlMirrorRegMark   = binding.NewRegMark(TrafficControlActionField, 0b01)
 	TrafficControlRedirectRegMark = binding.NewRegMark(TrafficControlActionField, 0b10)
 
+	// red4[24]: Field to indicate IGMP query traffic is droped by networkpolicy
+	McastDropByNPRegField = binding.NewRegField(4, 24, 24, "McastDropByNP")
+	McastDropByNPRegMark  = binding.NewRegMark(McastDropByNPRegField, 1)
+
 	// reg5(NXM_NX_REG5)
 	// Field to cache the Egress conjunction ID hit by TraceFlow packet.
 	TFEgressConjIDField = binding.NewRegField(5, 0, 31, "TFEgressConjunctionID")

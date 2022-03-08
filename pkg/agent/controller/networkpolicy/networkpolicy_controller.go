@@ -75,6 +75,8 @@ type Controller struct {
 	antreaProxyEnabled bool
 	// statusManagerEnabled indicates whether a statusManager is configured.
 	statusManagerEnabled bool
+	// multicastEnabled indicates whether multicast is enabled.
+	multicastEnabled bool
 	// loggingEnabled indicates where Antrea policy audit logging is enabled.
 	loggingEnabled bool
 	// antreaClientProvider provides interfaces to get antreaClient, which can be
@@ -105,7 +107,8 @@ type Controller struct {
 	fullSyncGroup         sync.WaitGroup
 	ifaceStore            interfacestore.InterfaceStore
 	// denyConnStore is for storing deny connections for flow exporter.
-	denyConnStore *connections.DenyConnectionStore
+	denyConnStore   *connections.DenyConnectionStore
+	mcastController *multicastController
 }
 
 // NewNetworkPolicyController returns a new *Controller.
@@ -116,9 +119,11 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 	podUpdateSubscriber channel.Subscriber,
 	groupCounters []proxytypes.GroupCounter,
 	groupIDUpdates <-chan string,
+	mcastController *multicastController,
 	antreaPolicyEnabled bool,
 	antreaProxyEnabled bool,
 	statusManagerEnabled bool,
+	multicastEnabled bool,
 	loggingEnabled bool,
 	asyncRuleDeleteInterval time.Duration,
 	dnsServerOverride string,
@@ -132,19 +137,26 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 		antreaPolicyEnabled:  antreaPolicyEnabled,
 		antreaProxyEnabled:   antreaProxyEnabled,
 		statusManagerEnabled: statusManagerEnabled,
+		multicastEnabled:     multicastEnabled,
 		loggingEnabled:       loggingEnabled,
 	}
+	c.ruleCache = newRuleCache(c.enqueueRule, podUpdateSubscriber, groupIDUpdates)
 	if antreaPolicyEnabled {
 		var err error
 		if c.fqdnController, err = newFQDNController(ofClient, idAllocator, dnsServerOverride, c.enqueueRule, v4Enabled, v6Enabled); err != nil {
 			return nil, err
 		}
+		if c.multicastEnabled {
+			c.mcastController = mcastController
+			c.mcastController.initialize(c.ruleCache)
+		}
+
 		if c.ofClient != nil {
 			c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInReasonNP), "dnsresponse", c.fqdnController)
 		}
 	}
-	c.reconciler = newReconciler(ofClient, ifaceStore, idAllocator, c.fqdnController, groupCounters, v4Enabled, v6Enabled, antreaPolicyEnabled)
-	c.ruleCache = newRuleCache(c.enqueueRule, podUpdateSubscriber, groupIDUpdates)
+	c.reconciler = newReconciler(ofClient, ifaceStore, idAllocator, c.fqdnController, c.mcastController, groupCounters,
+		v4Enabled, v6Enabled, antreaPolicyEnabled, multicastEnabled)
 	if statusManagerEnabled {
 		c.statusManager = newStatusController(antreaClientGetter, nodeName, c.ruleCache)
 	}
@@ -451,6 +463,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 			go wait.Until(c.fqdnController.worker, time.Second, stopCh)
 		}
 		go c.fqdnController.runRuleSyncTracker(stopCh)
+		if c.multicastEnabled {
+			go c.mcastController.run(stopCh)
+		}
 	}
 	klog.Infof("Waiting for all watchers to complete full sync")
 	c.fullSyncGroup.Wait()
