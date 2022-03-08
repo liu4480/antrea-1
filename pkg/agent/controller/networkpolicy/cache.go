@@ -37,11 +37,12 @@ import (
 )
 
 const (
-	RuleIDLength        = 16
-	appliedToGroupIndex = "appliedToGroup"
-	addressGroupIndex   = "addressGroup"
-	policyIndex         = "policy"
-	toServicesIndex     = "toServices"
+	RuleIDLength           = 16
+	appliedToGroupIndex    = "appliedToGroup"
+	addressGroupIndex      = "addressGroup"
+	policyIndex            = "policy"
+	toServicesIndex        = "toServices"
+	mcastGroupAddressIndex = "mcastGroupAddress"
 )
 
 // rule is the struct stored in ruleCache, it contains necessary information
@@ -335,11 +336,30 @@ func toServicesIndexFunc(obj interface{}) ([]string, error) {
 	return toSvcNamespacedName.UnsortedList(), nil
 }
 
+// toMcastGroupAddressIndexFunc knows how to get multicast groupAddresses of a *rule
+// It's provided to cache.Indexer to build an index of NetworkPolicy.
+func toMcastGroupAddressIndexFunc(obj interface{}) ([]string, error) {
+	rule := obj.(*rule)
+	mcastGroupAddresses := sets.String{}
+	for _, svc := range rule.Services {
+		if svc.IGMPType != nil {
+			mcastGroupAddresses.Insert(svc.GroupAddress)
+		}
+	}
+	return mcastGroupAddresses.UnsortedList(), nil
+}
+
 // newRuleCache returns a new *ruleCache.
 func newRuleCache(dirtyRuleHandler func(string), podUpdateSubscriber channel.Subscriber, serviceGroupIDUpdate <-chan string) *ruleCache {
 	rules := cache.NewIndexer(
 		ruleKeyFunc,
-		cache.Indexers{addressGroupIndex: addressGroupIndexFunc, appliedToGroupIndex: appliedToGroupIndexFunc, policyIndex: policyIndexFunc, toServicesIndex: toServicesIndexFunc},
+		cache.Indexers{
+			addressGroupIndex:      addressGroupIndexFunc,
+			appliedToGroupIndex:    appliedToGroupIndexFunc,
+			policyIndex:            policyIndexFunc,
+			toServicesIndex:        toServicesIndexFunc,
+			mcastGroupAddressIndex: toMcastGroupAddressIndexFunc,
+		},
 	)
 	cache := &ruleCache{
 		appliedToSetByGroup: make(map[string]v1beta.GroupMemberSet),

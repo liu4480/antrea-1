@@ -293,6 +293,9 @@ type Client interface {
 	// UninstallTrafficControlReturnPortFlow removes the flow to classify the packets from a return port.
 	UninstallTrafficControlReturnPortFlow(returnOFPort uint32) error
 
+	InstallIGMPGroup(groupID binding.GroupIDType,
+		localReceivers []uint32) error
+
 	InstallMulticastGroup(ofGroupID binding.GroupIDType, localReceivers []uint32) error
 }
 
@@ -723,6 +726,7 @@ func (c *client) generatePipelines() {
 		c.ovsMetersAreSupported,
 		c.enableDenyTracking,
 		c.enableAntreaPolicy,
+		c.enableMulticast,
 		c.connectUplinkToBridge)
 	c.activatedFeatures = append(c.activatedFeatures, c.featureNetworkPolicy)
 	c.traceableFeatures = append(c.traceableFeatures, c.featureNetworkPolicy)
@@ -746,7 +750,7 @@ func (c *client) generatePipelines() {
 
 	if c.enableMulticast {
 		// TODO: add support for IPv6 protocol
-		c.featureMulticast = newFeatureMulticast(c.cookieAllocator, []binding.Protocol{binding.ProtocolIP}, c.bridge)
+		c.featureMulticast = newFeatureMulticast(c.cookieAllocator, []binding.Protocol{binding.ProtocolIP}, c.bridge, c.enableAntreaPolicy)
 		c.activatedFeatures = append(c.activatedFeatures, c.featureMulticast)
 	}
 	c.featureTraceflow = newFeatureTraceflow()
@@ -1177,6 +1181,16 @@ func (c *client) UninstallTrafficControlReturnPortFlow(returnOFPort uint32) erro
 	c.replayMutex.RLock()
 	defer c.replayMutex.RUnlock()
 	return c.deleteFlows(c.featurePodConnectivity.tcCachedFlows, cacheKey)
+}
+
+func (c *client) InstallIGMPGroup(groupID binding.GroupIDType, localReceivers []uint32) error {
+	c.replayMutex.RLock()
+	defer c.replayMutex.RUnlock()
+
+	if err := c.featureMulticast.multicastQueryGroups(groupID, localReceivers...); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *client) InstallMulticastGroup(groupID binding.GroupIDType, localReceivers []uint32) error {

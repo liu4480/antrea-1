@@ -40,6 +40,14 @@ var (
 	baselineTierPriority int32 = 253
 )
 
+type ruleType int
+
+const (
+	unicast   ruleType = 0
+	igmp      ruleType = 1
+	multicast ruleType = 2
+)
+
 // Reconciler is an interface that knows how to reconcile the desired state of
 // CompletedRule with the actual state of Openflow entries.
 type Reconciler interface {
@@ -156,6 +164,8 @@ type lastRealized struct {
 	// the toServices of this policy rule. It must be empty for policy rule
 	// that is not egress and does not have toServices field.
 	groupIDAddresses sets.Int64
+	// groupAddresses track the latest realized set of multicast groups for the multicast traffic
+	groupAddresses sets.String
 }
 
 func newLastRealized(rule *CompletedRule) *lastRealized {
@@ -166,6 +176,7 @@ func newLastRealized(rule *CompletedRule) *lastRealized {
 		podIPs:           nil,
 		fqdnIPAddresses:  nil,
 		groupIDAddresses: nil,
+		groupAddresses:   nil,
 	}
 }
 
@@ -209,6 +220,9 @@ type reconciler struct {
 	// groupCounters is a list of GroupCounter for v4 and v6 env. reconciler uses these
 	// GroupCounters to get the groupIDs of a specific Service.
 	groupCounters []proxytypes.GroupCounter
+
+	// multicastEnabled indicates whether multicast is enabled
+	multicastEnabled bool
 }
 
 // newReconciler returns a new *reconciler.
@@ -220,6 +234,7 @@ func newReconciler(ofClient openflow.Client,
 	v4Enabled bool,
 	v6Enabled bool,
 	antreaPolicyEnabled bool,
+	multicastEnabled bool,
 ) *reconciler {
 	priorityAssigners := map[uint8]*tablePriorityAssigner{}
 	if antreaPolicyEnabled {
@@ -233,6 +248,18 @@ func newReconciler(ofClient openflow.Client,
 				assigner: newPriorityAssigner(false),
 			}
 		}
+		if multicastEnabled {
+			for _, table := range openflow.GetAntreaMulticastEgressTable() {
+				priorityAssigners[table.GetID()] = &tablePriorityAssigner{
+					assigner: newPriorityAssigner(false),
+				}
+			}
+			for _, table := range openflow.GetAntreaIGMPTables() {
+				priorityAssigners[table.GetID()] = &tablePriorityAssigner{
+					assigner: newPriorityAssigner(false),
+				}
+			}
+		}
 	}
 	reconciler := &reconciler{
 		ofClient:          ofClient,
@@ -242,6 +269,7 @@ func newReconciler(ofClient openflow.Client,
 		priorityAssigners: priorityAssigners,
 		fqdnController:    fqdnController,
 		groupCounters:     groupCounters,
+		multicastEnabled:  multicastEnabled,
 	}
 	// Check if ofClient is nil or not to be compatible with unit tests.
 	if ofClient != nil {
@@ -265,7 +293,7 @@ func (r *reconciler) Reconcile(rule *CompletedRule) error {
 	var ofPriority *uint16
 
 	value, exists := r.lastRealizeds.Load(rule.ID)
-	ruleTable := r.getOFRuleTable(rule)
+	ruleTable, _ := r.getOFRuleTable(rule)
 	priorityAssigner, _ := r.priorityAssigners[ruleTable]
 	if rule.isAntreaNetworkPolicyRule() {
 		// For CNP, only release priorityMutex after rule is installed on OVS. Otherwise,
@@ -290,26 +318,67 @@ func (r *reconciler) Reconcile(rule *CompletedRule) error {
 	return ofRuleInstallErr
 }
 
+func (r *reconciler) getRuleType(rule *CompletedRule) ruleType {
+	if !r.multicastEnabled {
+		return unicast
+	}
+	for _, service := range rule.Services {
+		if service.IGMPType != nil {
+			return igmp
+		}
+	}
+
+	for _, ipBlock := range rule.To.IPBlocks {
+		ipAddr := ip.IPNetToNetIPNet(&ipBlock.CIDR)
+		if ipAddr.IP.IsMulticast() {
+			return multicast
+		}
+	}
+	return unicast
+}
+
 // getOFRuleTable retreives the OpenFlow table to install the CompletedRule.
 // The decision is made based on whether the rule is created for a CNP/ANP, and
 // the Tier of that NetworkPolicy.
-func (r *reconciler) getOFRuleTable(rule *CompletedRule) uint8 {
-	if !rule.isAntreaNetworkPolicyRule() {
-		if rule.Direction == v1beta2.DirectionIn {
-			return openflow.IngressRuleTable.GetID()
-		}
-		return openflow.EgressRuleTable.GetID()
-	}
+func (r *reconciler) getOFRuleTable(rule *CompletedRule) (uint8, ruleType) {
+	rule_type := r.getRuleType(rule)
 	var ruleTables []*openflow.Table
-	if rule.Direction == v1beta2.DirectionIn {
-		ruleTables = openflow.GetAntreaPolicyIngressTables()
-	} else {
-		ruleTables = openflow.GetAntreaPolicyEgressTables()
+	var tableID uint8
+	switch rule_type {
+	case unicast:
+		if !rule.isAntreaNetworkPolicyRule() {
+			if rule.Direction == v1beta2.DirectionIn {
+				return openflow.IngressRuleTable.GetID(), unicast
+			}
+			return openflow.EgressRuleTable.GetID(), unicast
+		}
+		if rule.Direction == v1beta2.DirectionIn {
+			ruleTables = openflow.GetAntreaPolicyIngressTables()
+		} else {
+			ruleTables = openflow.GetAntreaPolicyEgressTables()
+		}
+		if *rule.TierPriority != baselineTierPriority {
+			return ruleTables[0].GetID(), unicast
+		}
+		tableID = ruleTables[1].GetID()
+	case igmp:
+		if rule.Direction == v1beta2.DirectionIn {
+			ruleTables = openflow.GetAntreaIGMPIngressTables()
+			tableID = ruleTables[0].GetID()
+		} else {
+			ruleTables = openflow.GetAntreaIGMPEgressTables()
+			tableID = ruleTables[0].GetID()
+		}
+
+	case multicast:
+		// Multicast NetworkPolicy only supports egress so far, we leave tableID as 0
+		// for ingress rules for multicast, later we will return empty flows for it.
+		if rule.Direction == v1beta2.DirectionOut {
+			ruleTables = openflow.GetAntreaMulticastEgressTable()
+			tableID = ruleTables[0].GetID()
+		}
 	}
-	if *rule.TierPriority != baselineTierPriority {
-		return ruleTables[0].GetID()
-	}
-	return ruleTables[1].GetID()
+	return tableID, rule_type
 }
 
 // getOFPriority retrieves the OFPriority for the input CompletedRule to be installed,
@@ -370,7 +439,7 @@ func (r *reconciler) BatchReconcile(rules []*CompletedRule) error {
 		return err
 	}
 	for _, rule := range rulesToInstall {
-		ruleTable := r.getOFRuleTable(rule)
+		ruleTable, _ := r.getOFRuleTable(rule)
 		priorityAssigner := r.priorityAssigners[ruleTable]
 		klog.V(2).Infof("Adding rule %s of NetworkPolicy %s to be reconciled in batch", rule.ID, rule.SourceRef.ToString())
 		ofPriority, _, _ := r.getOFPriority(rule, ruleTable, priorityAssigner)
@@ -399,7 +468,7 @@ func (r *reconciler) registerOFPriorities(rules []*CompletedRule) error {
 	prioritiesToRegister := map[uint8][]types.Priority{}
 	for _, rule := range rules {
 		if rule.isAntreaNetworkPolicyRule() {
-			ruleTable := r.getOFRuleTable(rule)
+			ruleTable, _ := r.getOFRuleTable(rule)
 			p := types.Priority{
 				TierPriority:   *rule.TierPriority,
 				PolicyPriority: *rule.PolicyPriority,
@@ -446,13 +515,37 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 	r.lastRealizeds.Store(rule.ID, lastRealized)
 
 	ofRuleByServicesMap := map[servicesKey]*types.PolicyRule{}
-
+	groupAddresses := r.getIGMPGroupAddress(rule)
+	isIGMP := len(groupAddresses) > 0
+	var from1, from2 []types.Address
+	if isIGMP && rule.Direction == v1beta2.DirectionIn {
+		// IGMP query
+		svcKey := servicesKey(fmt.Sprintf("igmp-query-%s", rule.ID))
+		ofPorts := r.getOFPorts(rule.TargetMembers)
+		lastRealized.podOFPorts[svcKey] = ofPorts
+		ofRuleByServicesMap[svcKey] = &types.PolicyRule{
+			Direction:     v1beta2.DirectionIn,
+			From:          append(from1, from2...),
+			To:            ofPortsToOFAddresses(ofPorts),
+			Service:       filterUnresolvablePort(rule.Services),
+			Action:        rule.Action,
+			Name:          rule.Name,
+			Priority:      ofPriority,
+			TableID:       table,
+			PolicyRef:     rule.SourceRef,
+			EnableLogging: rule.EnableLogging,
+			IGMPRule:      isIGMP,
+		}
+		return ofRuleByServicesMap, lastRealized
+	} else if isIGMP {
+		// IGMP report
+		return ofRuleByServicesMap, lastRealized
+	}
 	if rule.Direction == v1beta2.DirectionIn {
 		// Addresses got from source GroupMembers' IPs.
-		from1 := groupMembersToOFAddresses(rule.FromAddresses)
+		from1 = groupMembersToOFAddresses(rule.FromAddresses)
 		// Get addresses that in From IPBlock but not in Except IPBlocks.
-		from2 := ipBlocksToOFAddresses(rule.From.IPBlocks, r.ipv4Enabled, r.ipv6Enabled)
-
+		from2 = ipBlocksToOFAddresses(rule.From.IPBlocks, r.ipv4Enabled, r.ipv6Enabled)
 		membersByServicesMap, servicesMap := groupMembersByServices(rule.Services, rule.TargetMembers)
 		for svcKey, members := range membersByServicesMap {
 			ofPorts := r.getOFPorts(members)
@@ -468,6 +561,7 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 				TableID:       table,
 				PolicyRef:     rule.SourceRef,
 				EnableLogging: rule.EnableLogging,
+				IGMPRule:      isIGMP,
 			}
 		}
 	} else {
@@ -496,6 +590,7 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 				TableID:       table,
 				PolicyRef:     rule.SourceRef,
 				EnableLogging: rule.EnableLogging,
+				IGMPRule:      isIGMP,
 			}
 		}
 
@@ -520,6 +615,7 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 					TableID:       table,
 					PolicyRef:     rule.SourceRef,
 					EnableLogging: rule.EnableLogging,
+					IGMPRule:      isIGMP,
 				}
 				ofRuleByServicesMap[svcKey] = ofRule
 			}
@@ -568,7 +664,7 @@ func (r *reconciler) batchAdd(rules []*CompletedRule, ofPriorities []*uint16) er
 	var allOFRules []*types.PolicyRule
 
 	for idx, rule := range rules {
-		ruleTable := r.getOFRuleTable(rule)
+		ruleTable, _ := r.getOFRuleTable(rule)
 		ofRuleByServicesMap, lastRealized := r.computeOFRulesForAdd(rule, ofPriorities[idx], ruleTable)
 		lastRealizeds[idx] = lastRealized
 		for svcKey, ofRule := range ofRuleByServicesMap {
@@ -608,7 +704,52 @@ func (r *reconciler) update(lastRealized *lastRealized, newRule *CompletedRule, 
 	for svcKey, ofID := range lastRealized.ofIDs {
 		staleOFIDs[svcKey] = ofID
 	}
-
+	groupAddresses := r.getIGMPGroupAddress(newRule)
+	var from1, from2 []types.Address
+	isIGMP := len(groupAddresses) > 0
+	if isIGMP && newRule.Direction == v1beta2.DirectionIn {
+		// IGMP query
+		svcKey := servicesKey(fmt.Sprintf("igmp-query-%s", newRule.ID))
+		newOFPorts := r.getOFPorts(newRule.TargetMembers)
+		ofID, exists := lastRealized.ofIDs[svcKey]
+		// Install a new Openflow rule if this group doesn't exist, otherwise do incremental update.
+		if !exists {
+			ofRule := &types.PolicyRule{
+				Direction:     v1beta2.DirectionIn,
+				From:          append(from1, from2...),
+				To:            ofPortsToOFAddresses(newOFPorts),
+				Service:       filterUnresolvablePort(newRule.Services),
+				Action:        newRule.Action,
+				Priority:      ofPriority,
+				FlowID:        ofID,
+				TableID:       table,
+				PolicyRef:     newRule.SourceRef,
+				EnableLogging: newRule.EnableLogging,
+				IGMPRule:      isIGMP,
+			}
+			err := r.idAllocator.allocateForRule(ofRule)
+			if err != nil {
+				return err
+			}
+			if err = r.installOFRule(ofRule); err != nil {
+				return err
+			}
+			lastRealized.ofIDs[svcKey] = ofRule.FlowID
+		} else {
+			addedTo := ofPortsToOFAddresses(newOFPorts.Difference(lastRealized.podOFPorts[svcKey]))
+			deletedTo := ofPortsToOFAddresses(lastRealized.podOFPorts[svcKey].Difference(newOFPorts))
+			if err := r.updateOFRule(ofID, []types.Address{}, addedTo, []types.Address{}, deletedTo, ofPriority); err != nil {
+				return err
+			}
+			// Delete valid servicesKey from staleOFIDs.
+			delete(staleOFIDs, svcKey)
+		}
+		lastRealized.podOFPorts[svcKey] = newOFPorts
+		return nil
+	} else if isIGMP {
+		// IGMP report
+		return nil
+	}
 	// As rule identifier is calculated from the rule's content, the update can
 	// only happen to Group members.
 	if newRule.Direction == v1beta2.DirectionIn {
@@ -846,7 +987,7 @@ func (r *reconciler) Forget(ruleID string) error {
 	}
 
 	lastRealized := value.(*lastRealized)
-	table := r.getOFRuleTable(lastRealized.CompletedRule)
+	table, _ := r.getOFRuleTable(lastRealized.CompletedRule)
 	priorityAssigner, exists := r.priorityAssigners[table]
 	if exists {
 		priorityAssigner.mutex.Lock()
@@ -864,6 +1005,23 @@ func (r *reconciler) Forget(ruleID string) error {
 	}
 	r.lastRealizeds.Delete(ruleID)
 	return nil
+}
+
+func (r *reconciler) getIGMPGroupAddress(rule *CompletedRule) []string {
+	groupAddresses := []string{}
+	if len(rule.Services) > 0 && (rule.Services[0].Protocol != nil) &&
+		(*rule.Services[0].Protocol == v1beta2.ProtocolIGMP) {
+		for _, service := range rule.Services {
+			if service.GroupAddress != "" {
+				groupAddresses = append(groupAddresses, service.GroupAddress)
+			}
+		}
+		if len(groupAddresses) == 0 && rule.Direction == v1beta2.DirectionIn {
+			groupAddresses = append(groupAddresses, types.McastAllHosts.String())
+		}
+	}
+	klog.V(2).InfoS("Call getMcastGroupAddress and return", "groupAddresses", groupAddresses)
+	return groupAddresses
 }
 
 func (r *reconciler) GetRuleByFlowID(ruleFlowID uint32) (*types.PolicyRule, bool, error) {
