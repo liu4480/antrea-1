@@ -28,6 +28,8 @@ import (
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/openflow"
+	"antrea.io/antrea/pkg/agent/types"
+	"antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
 const (
@@ -41,7 +43,6 @@ var (
 	igmpMaxResponseTime = time.Second * 10
 	// igmpQueryDstMac is the MAC address used in the dst MAC field in the IGMP query message
 	igmpQueryDstMac, _ = net.ParseMAC("01:00:5e:00:00:01")
-	mcastAllHosts      = net.ParseIP("224.0.0.1").To4()
 )
 
 type IGMPSnooper struct {
@@ -49,6 +50,7 @@ type IGMPSnooper struct {
 	ifaceStore    interfacestore.InterfaceStore
 	eventCh       chan *mcastGroupEvent
 	queryInterval time.Duration
+	validator     types.MulticastValidator
 }
 
 func (s *IGMPSnooper) HandlePacketIn(pktIn *ofctrl.PacketIn) error {
@@ -97,12 +99,46 @@ func (s *IGMPSnooper) queryIGMP(group net.IP, versions []uint8) error {
 		if err != nil {
 			return err
 		}
-		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, mcastAllHosts, openflow13.P_NORMAL, igmp); err != nil {
+		outPort := uint32(0)
+		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, outPort, igmp); err != nil {
 			return err
 		}
-		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version)
+		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version, "outPort", outPort)
 	}
 	return nil
+}
+
+func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
+	if s.validator == nil {
+		// Do not need to validate if the packet should be dropped since Validator is null, thus here returns directly
+		return true, nil
+	}
+	if event.iface.Type == interfacestore.ContainerInterface {
+		item, err := s.validator.Validate(event.iface.PodName, event.iface.PodNamespace, event.group)
+		klog.V(2).InfoS("call function s.Validator.Validate", "podName", event.iface.PodName,
+			"podNamespace", event.iface.PodNamespace, "mgroup", event.group.String())
+		if err != nil {
+			// Here just checks if packet should be dropped or not, Validate will return error when it fails to call ByIndex.
+			// We just imagine there is no rule for the pod(event.iface.PodName, event.iface.PodNamespace) to groupAddress event.group.
+			klog.ErrorS(err, "s.Validator.Validate returned")
+			return true, err
+		}
+		if item.RuleAction != nil {
+			klog.V(2).InfoS("s.Validator.Validate returned value", "RuleAction", *item.RuleAction,
+				"uuid", item.UUID, "Name", item.Name)
+		}
+		if item.RuleAction != nil && *item.RuleAction == v1alpha1.RuleActionDrop {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *IGMPSnooper) validatePacketAndNotify(event *mcastGroupEvent) {
+	allow, _ := s.validate(event)
+	if allow {
+		s.eventCh <- event
+	}
 }
 
 func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
@@ -132,7 +168,7 @@ func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
 			time:  now,
 			iface: iface,
 		}
-		s.eventCh <- event
+		s.validatePacketAndNotify(event)
 	case protocol.IGMPv3Report:
 		msg := igmp.(*protocol.IGMPv3MembershipReport)
 		for _, gr := range msg.GroupRecords {
@@ -148,7 +184,7 @@ func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
 				time:  now,
 				iface: iface,
 			}
-			s.eventCh <- event
+			s.validatePacketAndNotify(event)
 		}
 
 	case protocol.IGMPv2LeaveGroup:
@@ -236,8 +272,8 @@ func parseIGMPPacket(pkt protocol.Ethernet) (protocol.IGMPMessage, error) {
 	}
 }
 
-func newSnooper(ofClient openflow.Client, ifaceStore interfacestore.InterfaceStore, eventCh chan *mcastGroupEvent, queryInterval time.Duration) *IGMPSnooper {
-	d := &IGMPSnooper{ofClient: ofClient, ifaceStore: ifaceStore, eventCh: eventCh, queryInterval: queryInterval}
+func newSnooper(ofClient openflow.Client, ifaceStore interfacestore.InterfaceStore, eventCh chan *mcastGroupEvent, queryInterval time.Duration, Validator types.MulticastValidator) *IGMPSnooper {
+	d := &IGMPSnooper{ofClient: ofClient, ifaceStore: ifaceStore, eventCh: eventCh, queryInterval: queryInterval, validator: Validator}
 	ofClient.RegisterPacketInHandler(uint8(openflow.PacketInReasonMC), "MulticastGroupDiscovery", d)
 	return d
 }

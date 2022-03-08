@@ -786,6 +786,18 @@ func getServiceMatchPairs(service v1beta2.Service, ipProtocols []binding.Protoco
 				conjMatchesMatchPairs = append(conjMatchesMatchPairs, matchPairs)
 			}
 		}
+	case v1beta2.ProtocolIGMP:
+		var matchPairs []matchPair
+		if service.IGMPType != nil && *service.IGMPType == crdv1alpha1.IGMPQuery {
+			if service.GroupAddress != "" {
+				matchPairs = append(matchPairs, matchPair{matchKey: MatchDstIP, matchValue: net.ParseIP(service.GroupAddress)})
+			} else {
+				// We think empty group address means all group addresses. But since OVS does not recognize query group address in IGMP message.
+				// So IGMP query is only working on 224.0.0.1, and set group address as 224.0.0.1.
+				matchPairs = append(matchPairs, matchPair{matchKey: MatchDstIP, matchValue: types.McastAllHosts})
+			}
+			conjMatchesMatchPairs = append(conjMatchesMatchPairs, matchPairs)
+		}
 	default:
 		addL4MatchPairs(MatchTCPDstPort)
 	}
@@ -991,6 +1003,55 @@ func (c *client) InstallPolicyRuleFlows(rule *types.PolicyRule) error {
 	return nil
 }
 
+// For multicast traffic, we support ingress rules for IGMP, and egress rules for multicast data traffic.
+// Ingress rules for IGMP packets are enforced by the packetIn handler.
+// Check is the rule is egress for IGMP, caller will return empty flow if it is.
+func (f *featureNetworkPolicy) isIGMPEgressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	// If multicast is enabled, and the rule is IGMP and egress rule, this function will return true.
+	// Otherwise, it will return false.
+	if f.enableMulticast && !isIngress && isIGMP {
+		return true
+	}
+	return false
+}
+
+// For multicast traffic, we support ingress rules for IGMP, and egress rules for multicast data traffic.
+// Ingress rules for IGMP packets are enforced by the packetIn handler.
+// Check if the rule is ingress for IGMP, caller will generate conjunction flows if it is.
+func (f *featureNetworkPolicy) isIGMPIngressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	// If multicast is enabled, and the rule is IGMP and ingress, and table is MulticastIGMPIngressTable,
+	// this function will return true.
+	// Otherwise, it will return false.
+	if f.enableMulticast && isIngress && isIGMP {
+		return true
+	}
+	return false
+}
+
+// For multicast traffic, we support ingress rules for IGMP, and egress rules for multicast data traffic.
+// Ingress rules for IGMP packets are enforced by the packetIn handler.
+// Check if the rule is egress for multicast traffic, caller will generate conjunction flows if it is
+func (f *featureNetworkPolicy) isMulticastEgressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	// If multicast is enabled, and the rule it is egress and table is MulticastEgressRuleTable,
+	// but it is not IGMP, the rule is egress for multicast udp traffic.
+	// Otherwise, it is not.
+	if f.enableMulticast && !isIngress && !isIGMP {
+		return tableID == MulticastEgressRuleTable.GetID()
+	}
+	return false
+}
+
+// For multicast traffic, we support ingress rules for IGMP, and egress rules for multicast data traffic.
+// Ingress rules for IGMP packets are enforced by the packetIn handler.
+// Check if the rule is ingress for multicast traffic, caller will return empty flow if it is
+func (f *featureNetworkPolicy) isMulticastIngressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	// Currently ingress rules for multicast traffic are not supported, we set the tableID to 0 to mark it.
+	if tableID == 0 {
+		return true
+	}
+	return false
+}
+
 // calculateActionFlowChangesForRule calculates and updates the actionFlows for the conjunction corresponded to the ofPolicyRule.
 func (f *featureNetworkPolicy) calculateActionFlowChangesForRule(rule *types.PolicyRule) *policyRuleConjunction {
 	ruleOfID := rule.FlowID
@@ -1017,16 +1078,30 @@ func (f *featureNetworkPolicy) calculateActionFlowChangesForRule(rule *types.Pol
 		var actionFlows []binding.Flow
 		var metricFlows []binding.Flow
 		if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionDrop {
-			metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress))
-			actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging))
+			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); metricFlow != nil {
+				metricFlows = append(metricFlows, metricFlow)
+			}
+			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging, isIngress, rule.IGMPRule); actionFlow != nil {
+				actionFlows = append(actionFlows, actionFlow)
+			}
 		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionReject {
-			metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress))
-			actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging))
+			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); metricFlow != nil {
+				metricFlows = append(metricFlows, metricFlow)
+			}
+			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging, isIngress, rule.IGMPRule); actionFlow != nil {
+				actionFlows = append(actionFlows, actionFlow)
+			}
 		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionPass {
-			actionFlows = append(actionFlows, f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging))
+			if actionFlow := f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging); actionFlow != nil {
+				actionFlows = append(actionFlows, actionFlow)
+			}
 		} else {
-			metricFlows = append(metricFlows, f.allowRulesMetricFlows(ruleOfID, isIngress)...)
-			actionFlows = append(actionFlows, f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging)...)
+			if allowMetricFlows := f.allowRulesMetricFlows(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); len(allowMetricFlows) > 0 {
+				metricFlows = append(metricFlows, allowMetricFlows...)
+			}
+			if allowActionFlows := f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging, isIngress, rule.IGMPRule); len(allowActionFlows) > 0 {
+				actionFlows = append(actionFlows, allowActionFlows...)
+			}
 		}
 		conj.actionFlows = actionFlows
 		conj.metricFlows = metricFlows
@@ -1053,7 +1128,16 @@ func (f *featureNetworkPolicy) addRuleToConjunctiveMatch(conj *policyRuleConjunc
 	}
 	if conj.toClause != nil {
 		for _, addr := range rule.To {
-			match := generateAddressConjMatch(conj.toClause.ruleTable.GetID(), addr, types.DstAddress, rule.Priority)
+			var match *conjunctiveMatch
+			if rule.IGMPRule {
+				match = &conjunctiveMatch{
+					tableID:    conj.toClause.ruleTable.GetID(),
+					matchPairs: []matchPair{{matchKey: MatchDstOFPort, matchValue: addr.GetValue()}},
+					priority:   rule.Priority,
+				}
+			} else {
+				match = generateAddressConjMatch(conj.toClause.ruleTable.GetID(), addr, types.DstAddress, rule.Priority)
+			}
 			f.addActionToConjunctiveMatch(conj.toClause, match)
 		}
 	}
@@ -1787,6 +1871,7 @@ type featureNetworkPolicy struct {
 	ovsMetersAreSupported bool
 	enableDenyTracking    bool
 	enableAntreaPolicy    bool
+	enableMulticast       bool
 	ctZoneSrcField        *binding.RegField
 	// deterministic represents whether to generate flows deterministically.
 	// For example, if a flow has multiple actions, setting it to true can get consistent flow.
@@ -1807,6 +1892,7 @@ func newFeatureNetworkPolicy(
 	ovsMetersAreSupported,
 	enableDenyTracking,
 	enableAntreaPolicy bool,
+	enableMulticast bool,
 	connectUplinkToBridge bool) *featureNetworkPolicy {
 	return &featureNetworkPolicy{
 		cookieAllocator:          cookieAllocator,
@@ -1814,6 +1900,7 @@ func newFeatureNetworkPolicy(
 		bridge:                   bridge,
 		globalConjMatchFlowCache: make(map[string]*conjMatchFlowContext),
 		policyCache:              cache.NewIndexer(policyConjKeyFunc, cache.Indexers{priorityIndex: priorityIndexFunc}),
+		enableMulticast:          enableMulticast,
 		ovsMetersAreSupported:    ovsMetersAreSupported,
 		enableDenyTracking:       enableDenyTracking,
 		enableAntreaPolicy:       enableAntreaPolicy,
@@ -1826,6 +1913,9 @@ func (f *featureNetworkPolicy) initFlows() []binding.Flow {
 	f.egressTables = map[uint8]struct{}{EgressRuleTable.GetID(): {}, EgressDefaultTable.GetID(): {}}
 	if f.enableAntreaPolicy {
 		f.egressTables[AntreaPolicyEgressRuleTable.GetID()] = struct{}{}
+		if f.enableMulticast {
+			f.egressTables[MulticastEgressRuleTable.GetID()] = struct{}{}
+		}
 	}
 	var flows []binding.Flow
 	flows = append(flows, f.establishedConnectionFlows()...)
