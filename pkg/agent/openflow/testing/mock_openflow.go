@@ -297,17 +297,17 @@ func (mr *MockClientMockRecorder) InstallMulticastFlows(arg0, arg1 interface{}) 
 }
 
 // InstallMulticastGroup mocks base method
-func (m *MockClient) InstallMulticastGroup(arg0 openflow.GroupIDType, arg1 []uint32) error {
+func (m *MockClient) InstallMulticastGroup(arg0 openflow.GroupIDType, arg1 bool, arg2 []uint32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallMulticastGroup", arg0, arg1)
+	ret := m.ctrl.Call(m, "InstallMulticastGroup", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InstallMulticastGroup indicates an expected call of InstallMulticastGroup
-func (mr *MockClientMockRecorder) InstallMulticastGroup(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) InstallMulticastGroup(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallMulticastGroup", reflect.TypeOf((*MockClient)(nil).InstallMulticastGroup), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallMulticastGroup", reflect.TypeOf((*MockClient)(nil).InstallMulticastGroup), arg0, arg1, arg2)
 }
 
 // InstallMulticastInitialFlows mocks base method
