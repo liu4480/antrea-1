@@ -60,6 +60,8 @@ var (
 	NotRewriteMACRegMark = binding.NewOneBitZeroRegMark(0, 9, "NotRewriteMAC")
 	// reg0[10]: Mark to indicate the packet is denied(Drop/Reject).
 	CnpDenyRegMark = binding.NewOneBitRegMark(0, 10, "CNPDeny")
+	// reg0[18]: Mark to indicate the packet is allowed
+	CnpAllowRegmark = binding.NewOneBitRegMark(0, 18, "CNPAllow")
 	// reg0[11..12]: Field to indicate disposition of Antrea Policy. It could have more bits to support more dispositions
 	// that Antrea Policy support in the future. Marks in this field include:
 	//   - 0b00: allow
@@ -98,9 +100,9 @@ var (
 	// reg3(NXM_NX_REG3)
 	// Field to store the selected Service Endpoint IP
 	EndpointIPField = binding.NewRegField(3, 0, 31, "EndpointIP")
-	// Field to store the conjunction ID which is for "deny" rule in CNP. It shares the same register with EndpointIPField,
+	// Field to store the conjunction ID which is for rule in CNP. It shares the same register with EndpointIPField,
 	// since the service selection will finish when a packet hitting NetworkPolicy related rules.
-	CNPDenyConjIDField = binding.NewRegField(3, 0, 31, "CNPDenyConjunctionID")
+	CNPConjIDField = binding.NewRegField(3, 0, 31, "CNPConjunctionID")
 
 	// reg4(NXM_NX_REG4)
 	// reg4[0..15]: Field to store the selected Service Endpoint port.

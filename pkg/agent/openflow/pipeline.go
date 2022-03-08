@@ -177,10 +177,17 @@ var (
 	L2ForwardingOutTable = newTable("Output", stageOutput, pipelineIP)
 
 	// Tables of pipelineMulticast are declared below. Do don't declare any tables of other pipelines here!
-
+	// Tables in stageEgressSecurity:
+	// Since IGMP Egress rules only support IGMP report which is handled by packetIn, it is not necessary to add
+	// MulticastIGMPEgressMetricTable here.
+	MulticastIGMPEgressTable   = newTable("MulticastIGMPEgress", stageEgressSecurity, pipelineMulticast)
+	MulticastEgressRuleTable   = newTable("MulticastEgressRule", stageEgressSecurity, pipelineMulticast)
+	MulticastEgressMetricTable = newTable("MulticastEgressMetric", stageEgressSecurity, pipelineMulticast)
 	// Tables in stageRouting:
 	MulticastRoutingTable = newTable("MulticastRouting", stageRouting, pipelineMulticast)
-
+	// Tables in stageIngressSecurity
+	MulticastIGMPIngressTable   = newTable("MulticastIGMPIngress", stageIngressSecurity, pipelineMulticast)
+	MulticastIngressMetricTable = newTable("MulticastIngressMetric", stageIngressSecurity, pipelineMulticast)
 	// Tables in stageOutput
 	MulticastOutputTable = newTable("MulticastOutput", stageOutput, pipelineMulticast)
 
@@ -284,6 +291,32 @@ func GetAntreaPolicyEgressTables() []*Table {
 	return []*Table{
 		AntreaPolicyEgressRuleTable,
 		EgressDefaultTable,
+	}
+}
+
+func GetAntreaIGMPTables() []*Table {
+	return []*Table{
+		MulticastIGMPEgressTable,
+		MulticastIGMPIngressTable,
+		MulticastIngressMetricTable,
+	}
+}
+
+func GetAntreaIGMPEgressTables() []*Table {
+	return []*Table{
+		MulticastIGMPEgressTable,
+	}
+}
+
+func GetAntreaIGMPIngressTables() []*Table {
+	return []*Table{
+		MulticastIGMPIngressTable,
+	}
+}
+
+func GetAntreaMulticastEgressTable() []*Table {
+	return []*Table{
+		MulticastEgressRuleTable,
 	}
 }
 
@@ -1569,7 +1602,7 @@ func (f *featurePodConnectivity) arpNormalFlow() binding.Flow {
 		Done()
 }
 
-func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingress bool) []binding.Flow {
+func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingress bool, tableID uint8) []binding.Flow {
 	cookieID := f.cookieAllocator.Request(f.category).Raw()
 	metricTable := IngressMetricTable
 	offset := 0
@@ -1581,6 +1614,12 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 		offset = 32
 		field = EgressRuleCTLabel
 	}
+	if f.enableMulticast && tableID == MulticastEgressRuleTable.GetID() {
+		metricTable = MulticastEgressMetricTable
+	}
+	if f.enableMulticast && tableID == MulticastIGMPIngressTable.GetID() {
+		metricTable = MulticastIngressMetricTable
+	}
 	metricFlow := func(isCTNew bool, protocol binding.Protocol) binding.Flow {
 		return metricTable.ofTable.BuildFlow(priorityNormal).
 			Cookie(cookieID).
@@ -1591,6 +1630,19 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 			Done()
 	}
 	var flows []binding.Flow
+	// For IGMP ingress or multicast egress traffic, we need to calculate the packets dropped or allowed by each rule.
+	// Since IGMP and multicast traffic use a different pipeline, we just add flow in MulticastIngressMetricTable
+	// for IGMP ingress, and add flow in MulticastEgressMetricTable for multicast egress.
+	if metricTable == MulticastEgressMetricTable || metricTable == MulticastIngressMetricTable {
+		flow := metricTable.ofTable.BuildFlow(priorityNormal).
+			Cookie(f.cookieAllocator.Request(f.category).Raw()).
+			MatchRegMark(CnpAllowRegmark).
+			MatchRegFieldWithValue(CNPConjIDField, conjunctionID).
+			Action().GotoTable(metricTable.GetNext()).
+			Done()
+		flows = append(flows, flow)
+		return flows
+	}
 	// These two flows track the number of sessions in addition to the packet and byte counts.
 	// The flow matching 'ct_state=+new' tracks the number of sessions and byte count of the first packet for each
 	// session.
@@ -1601,15 +1653,21 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	return flows
 }
 
-func (f *featureNetworkPolicy) denyRuleMetricFlow(conjunctionID uint32, ingress bool) binding.Flow {
+func (f *featureNetworkPolicy) denyRuleMetricFlow(conjunctionID uint32, ingress bool, tableID uint8) binding.Flow {
 	metricTable := IngressMetricTable
 	if !ingress {
 		metricTable = EgressMetricTable
 	}
+	if f.enableMulticast && tableID == MulticastEgressRuleTable.GetID() {
+		metricTable = MulticastEgressMetricTable
+	}
+	if f.enableMulticast && tableID == MulticastIGMPIngressTable.GetID() {
+		metricTable = MulticastIngressMetricTable
+	}
 	return metricTable.ofTable.BuildFlow(priorityNormal).
 		Cookie(f.cookieAllocator.Request(f.category).Raw()).
 		MatchRegMark(CnpDenyRegMark).
-		MatchRegFieldWithValue(CNPDenyConjIDField, conjunctionID).
+		MatchRegFieldWithValue(CNPConjIDField, conjunctionID).
 		Action().Drop().
 		Done()
 }
@@ -1658,9 +1716,10 @@ func (f *featurePodConnectivity) ipv6Flows() []binding.Flow {
 	return flows
 }
 
-// conjunctionActionFlow generates the flow to jump to a specific table if policyRuleConjunction ID is matched. Priority of
+// For normal traffic, conjunctionActionFlow generates the flow to jump to a specific table if policyRuleConjunction ID is matched. Priority of
 // conjunctionActionFlow is created at priorityLow for k8s network policies, and *priority assigned by PriorityAssigner for AntreaPolicy.
 func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table binding.Table, nextTable uint8, priority *uint16, enableLogging bool) []binding.Flow {
+	tableID := table.GetID()
 	cookieID := f.cookieAllocator.Request(f.category).Raw()
 	var ofPriority uint16
 	if priority == nil {
@@ -1670,7 +1729,7 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 	}
 	conjReg := TFIngressConjIDField
 	labelField := IngressRuleCTLabel
-	tableID := table.GetID()
+
 	if _, ok := f.egressTables[tableID]; ok {
 		conjReg = TFEgressConjIDField
 		labelField = EgressRuleCTLabel
@@ -1706,6 +1765,19 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 			Done()
 	}
 	var flows []binding.Flow
+	// As IGMP and multicast use a different pipeline 'Multicast', if the rule is
+	// IGMP ingress or multicast egress，conjunctionActionFlow generates the flow
+	// to mark the packet to be allowed if policyRuleConjunction ID is matched.
+	// Any matched flow will be resubmitted to next table in corresponding metric tables.
+	if f.enableMulticast && (tableID == MulticastEgressRuleTable.GetID() || tableID == MulticastIGMPIngressTable.GetID()) {
+		flow := table.BuildFlow(ofPriority).MatchConjID(conjunctionID).
+			Action().LoadToRegField(CNPConjIDField, conjunctionID).
+			Action().LoadRegMark(CnpAllowRegmark).Action().GotoTable(table.GetNext()).
+			Cookie(f.cookieAllocator.Request(f.category).Raw()).
+			Done()
+		flows = append(flows, flow)
+		return flows
+	}
 	for _, proto := range f.ipProtocols {
 		flows = append(flows, conjActionFlow(proto))
 	}
@@ -1714,7 +1786,8 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 
 // conjunctionActionDenyFlow generates the flow to mark the packet to be denied (dropped or rejected) if policyRuleConjunction
 // ID is matched. Any matched flow will be dropped in corresponding metric tables.
-func (f *featureNetworkPolicy) conjunctionActionDenyFlow(conjunctionID uint32, table binding.Table, priority *uint16, disposition uint32, enableLogging bool) binding.Flow {
+func (f *featureNetworkPolicy) conjunctionActionDenyFlow(conjunctionID uint32, table binding.Table, priority *uint16,
+	disposition uint32, enableLogging bool) binding.Flow {
 	ofPriority := *priority
 	metricTable := IngressMetricTable
 	tableID := table.GetID()
@@ -1722,9 +1795,15 @@ func (f *featureNetworkPolicy) conjunctionActionDenyFlow(conjunctionID uint32, t
 		metricTable = EgressMetricTable
 	}
 
+	if f.enableMulticast && tableID == MulticastEgressRuleTable.GetID() {
+		metricTable = MulticastEgressMetricTable
+	}
+	if f.enableMulticast && tableID == MulticastIGMPIngressTable.GetID() {
+		metricTable = MulticastIngressMetricTable
+	}
 	flowBuilder := table.BuildFlow(ofPriority).
 		MatchConjID(conjunctionID).
-		Action().LoadToRegField(CNPDenyConjIDField, conjunctionID).
+		Action().LoadToRegField(CNPConjIDField, conjunctionID).
 		Action().LoadRegMark(CnpDenyRegMark)
 
 	var customReason int
@@ -1768,6 +1847,7 @@ func (f *featureNetworkPolicy) conjunctionActionPassFlow(conjunctionID uint32, t
 	}
 	flowBuilder := table.BuildFlow(ofPriority).MatchConjID(conjunctionID).
 		Action().LoadToRegField(conjReg, conjunctionID)
+
 	if enableLogging {
 		flowBuilder = flowBuilder.
 			Action().LoadRegMark(DispositionPassRegMark, CustomReasonLoggingRegMark).
@@ -1979,6 +2059,8 @@ func (f *featureNetworkPolicy) addFlowMatch(fb binding.FlowBuilder, matchKey *ty
 		}
 	case MatchServiceGroupID:
 		fb = fb.MatchRegFieldWithValue(ServiceGroupIDField, matchValue.(uint32))
+	case MatchIGMPProtocol:
+		fb = fb.MatchProtocol(matchKey.GetOFProtocol())
 	}
 	return fb
 }
@@ -2050,7 +2132,7 @@ func (f *featureNetworkPolicy) dnsPacketInFlow(conjunctionID uint32) binding.Flo
 }
 
 // localProbeFlows generates the flows to forward locally generated request packets to stageConntrack directly, bypassing
-// ingress rules of Network Policies. The packets are sent by kubelet to probe the liveness/readiness of local Pods.
+// ingress rule of Network Policies. The packets are sent by kubelet to probe the liveness/readiness of local Pods.
 // On Linux and when OVS kernel datapath is used, the probe packets are identified by matching the HostLocalSourceMark.
 // On Windows or when OVS userspace (netdev) datapath is used, we need a different approach because:
 // 1. On Windows, kube-proxy userspace mode is used, and currently there is no way to distinguish kubelet generated traffic
@@ -2575,16 +2657,20 @@ func pipelineClassifyFlow(cookieID uint64, protocol binding.Protocol, pipeline b
 		Done()
 }
 
-// igmpPktInFlows generates the flow to load CustomReasonIGMPRegMark to mark the IGMP packet in MulticastRoutingTable and sends
-// it to antrea-agent.
+// igmpPktInFlows generates the flow to load CustomReasonIGMPRegMark to mark the IGMP packet in MulticastIGMPEgressTable
+// if multicast enabled or in MulticastRoutingTable if not and sends it to antrea-agent.
 func (f *featureMulticast) igmpPktInFlows(reason uint8) []binding.Flow {
+	table := MulticastIGMPEgressTable
+	if !f.enableAntreaPolicy {
+		table = MulticastRoutingTable
+	}
 	flows := []binding.Flow{
 		// Set a custom reason for the IGMP packets, and then send it to antrea-agent and forward it normally in the
 		// OVS bridge, so that the OVS multicast db cache can be updated, and antrea-agent can identify the local multicast
 		// group and its members in the meanwhile.
 		// Do not set dst IP address because IGMPv1 report message uses target multicast group as IP destination in
 		// the packet.
-		MulticastRoutingTable.ofTable.BuildFlow(priorityHigh).
+		table.ofTable.BuildFlow(priorityHigh).
 			Cookie(f.cookieAllocator.Request(f.category).Raw()).
 			MatchProtocol(binding.ProtocolIGMP).
 			MatchRegMark(FromLocalRegMark).
@@ -2616,14 +2702,16 @@ func (f *featureMulticast) localMulticastForwardFlows(multicastIP net.IP, groupI
 // send multicast packets to access the external receivers. For the case that one or more local Pods have joined the target
 // multicast group, it is handled by the flows created by function "localMulticastForwardFlows" after local Pods report the
 // IGMP membership.
+// Because there are ingress tables between MulticastRoutingTable and MulticastOutputTable, while currently ingress rules only
+// support IGMP query, it is not necessary to goto the ingress tables for other multicast traffic.
 func (f *featureMulticast) externalMulticastReceiverFlow() binding.Flow {
 	return MulticastRoutingTable.ofTable.BuildFlow(priorityLow).
 		Cookie(f.cookieAllocator.Request(f.category).Raw()).
 		MatchProtocol(binding.ProtocolIP).
-		MatchDstIPNet(*mcastCIDR).
+		MatchDstIPNet(*types.McastCIDR).
 		Action().LoadRegMark(OFPortFoundRegMark).
 		Action().LoadToRegField(TargetOFPortField, config.HostGatewayOFPort).
-		Action().NextTable().
+		Action().GotoStage(stageOutput).
 		Done()
 }
 
