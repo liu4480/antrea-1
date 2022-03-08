@@ -125,6 +125,7 @@ func run(o *Options) error {
 	ovsDatapathType := ovsconfig.OVSDatapathType(o.config.OVSDatapathType)
 	ovsBridgeClient := ovsconfig.NewOVSBridge(o.config.OVSBridge, ovsDatapathType, ovsdbConnection)
 	ovsBridgeMgmtAddr := ofconfig.GetMgmtAddress(o.config.OVSRunDir, o.config.OVSBridge)
+	multicastEnabled := features.DefaultFeatureGate.Enabled(features.Multicast)
 	ofClient := openflow.NewClient(o.config.OVSBridge, ovsBridgeMgmtAddr,
 		features.DefaultFeatureGate.Enabled(features.AntreaProxy),
 		features.DefaultFeatureGate.Enabled(features.AntreaPolicy),
@@ -132,7 +133,7 @@ func run(o *Options) error {
 		features.DefaultFeatureGate.Enabled(features.FlowExporter),
 		o.config.AntreaProxy.ProxyAll,
 		connectUplinkToBridge,
-		features.DefaultFeatureGate.Enabled(features.Multicast),
+		multicastEnabled,
 		features.DefaultFeatureGate.Enabled(features.TrafficControl),
 	)
 
@@ -167,7 +168,7 @@ func run(o *Options) error {
 	egressConfig := &config.EgressConfig{
 		ExceptCIDRs: exceptCIDRs,
 	}
-	routeClient, err := route.NewClient(networkConfig, o.config.NoSNAT, o.config.AntreaProxy.ProxyAll, connectUplinkToBridge, features.DefaultFeatureGate.Enabled(features.Multicast))
+	routeClient, err := route.NewClient(networkConfig, o.config.NoSNAT, o.config.AntreaProxy.ProxyAll, connectUplinkToBridge, multicastEnabled)
 	if err != nil {
 		return fmt.Errorf("error creating route client: %v", err)
 	}
@@ -297,6 +298,7 @@ func run(o *Options) error {
 		antreaPolicyEnabled,
 		antreaProxyEnabled,
 		statusManagerEnabled,
+		multicastEnabled,
 		loggingEnabled,
 		asyncRuleDeleteInterval,
 		o.config.DNSServerOverride,
@@ -487,7 +489,6 @@ func run(o *Options) error {
 	go nodeRouteController.Run(stopCh)
 
 	go networkPolicyController.Run(stopCh)
-
 	// Initialize the NPL agent.
 	if enableNodePortLocal {
 		nplController, err := npl.InitializeNPLAgent(
@@ -578,7 +579,7 @@ func run(o *Options) error {
 		}
 	}
 
-	if features.DefaultFeatureGate.Enabled(features.Multicast) {
+	if multicastEnabled {
 		multicastSocket, err := multicast.CreateMulticastSocket()
 		if err != nil {
 			return fmt.Errorf("failed to create multicast socket")
@@ -592,7 +593,8 @@ func run(o *Options) error {
 			sets.NewString(append(o.config.Multicast.MulticastInterfaces, nodeConfig.NodeTransportInterfaceName)...),
 			ovsBridgeClient,
 			podUpdateChannel,
-			o.igmpQueryInterval)
+			o.igmpQueryInterval,
+			networkPolicyController)
 		if err := mcastController.Initialize(); err != nil {
 			return err
 		}

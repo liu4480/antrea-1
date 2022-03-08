@@ -282,6 +282,20 @@ func (mr *MockClientMockRecorder) InstallEndpointFlows(arg0, arg1 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallEndpointFlows", reflect.TypeOf((*MockClient)(nil).InstallEndpointFlows), arg0, arg1)
 }
 
+// InstallIGMPGroup mocks base method
+func (m *MockClient) InstallIGMPGroup(arg0 openflow.GroupIDType, arg1 []uint32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InstallIGMPGroup", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InstallIGMPGroup indicates an expected call of InstallIGMPGroup
+func (mr *MockClientMockRecorder) InstallIGMPGroup(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallIGMPGroup", reflect.TypeOf((*MockClient)(nil).InstallIGMPGroup), arg0, arg1)
+}
+
 // InstallMulticastFlows mocks base method
 func (m *MockClient) InstallMulticastFlows(arg0 net.IP, arg1 openflow.GroupIDType) error {
 	m.ctrl.T.Helper()

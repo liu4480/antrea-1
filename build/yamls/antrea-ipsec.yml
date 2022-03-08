@@ -1006,6 +1006,7 @@ spec:
                           type: object
                           oneOf:
                             - required: [icmp]
+                            - required: [igmp]
                           properties:
                             icmp:
                               type: object
@@ -1018,6 +1019,18 @@ spec:
                                   type: integer
                                   minimum: 0
                                   maximum: 255
+                            igmp:
+                              type: object
+                              properties:
+                                igmpType:
+                                  type: integer
+                                  # Only IGMP query (0x11) is valid igmpType in ingress rules.
+                                  enum: [ 0x11 ]
+                                groupAddress:
+                                  type: string
+                                  oneOf:
+                                    - format: ipv4
+                                    - format: ipv6
                       from:
                         type: array
                         items:
@@ -1219,6 +1232,7 @@ spec:
                           type: object
                           oneOf:
                             - required: [icmp]
+                            - required: [igmp]
                           properties:
                             icmp:
                               type: object
@@ -1231,6 +1245,19 @@ spec:
                                   type: integer
                                   minimum: 0
                                   maximum: 255
+                            igmp:
+                              type: object
+                              properties:
+                                igmpType:
+                                  type: integer
+                                  # Only IGMP reports are igmpType in egress rules,
+                                  # 0x12 is IGMP report V1, 0x16 is IGMP report v2, 0x22 is IGMP report v3.
+                                  enum: [ 0x12, 0x16, 0x22 ]
+                                groupAddress:
+                                  type: string
+                                  oneOf:
+                                    - format: ipv4
+                                    - format: ipv6
                       to:
                         type: array
                         items:
@@ -1905,6 +1932,7 @@ spec:
                           type: object
                           oneOf:
                             - required: [icmp]
+                            - required: [igmp]
                           properties:
                             icmp:
                               type: object
@@ -1917,6 +1945,18 @@ spec:
                                   type: integer
                                   minimum: 0
                                   maximum: 255
+                            igmp:
+                              type: object
+                              properties:
+                                igmpType:
+                                  type: integer
+                                  # Only IGMP query (0x11) is valid igmpType in ingress rules.
+                                  enum: [ 17 ]
+                                groupAddress:
+                                  type: string
+                                  oneOf:
+                                    - format: ipv4
+                                    - format: ipv6
                       from:
                         type: array
                         items:
@@ -2087,6 +2127,7 @@ spec:
                           type: object
                           oneOf:
                             - required: [icmp]
+                            - required: [igmp]
                           properties:
                             icmp:
                               type: object
@@ -2099,6 +2140,19 @@ spec:
                                   type: integer
                                   minimum: 0
                                   maximum: 255
+                            igmp:
+                              type: object
+                              properties:
+                                igmpType:
+                                  type: integer
+                                  # Only IGMP reports are igmpType in egress rules,
+                                  # 0x12 is IGMP report V1, 0x16 is IGMP report v2, 0x22 is IGMP report v3.
+                                  enum: [ 18, 22, 34 ]
+                                groupAddress:
+                                  type: string
+                                  oneOf:
+                                    - format: ipv4
+                                    - format: ipv6
                       to:
                         type: array
                         items:
