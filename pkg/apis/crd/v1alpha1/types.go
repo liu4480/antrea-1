@@ -505,8 +505,10 @@ const (
 	// client will receive a response.
 	RuleActionReject RuleAction = "Reject"
 
-	IGMPQuery        IGMPKind = "IGMPQuery"
-	IGMPReport       IGMPKind = "IGMPReport"
+	IGMPQuery        int32 = 0x11
+	IGMPReportV1     int32 = 0x12
+	IGMPReportV2     int32 = 0x16
+	IGMPReportV3     int32 = 0x22
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -628,6 +630,6 @@ type ICMPProtocol struct {
 
 type IGMPProtocol struct {
 	//add igmp type
-	IGMPType       *IGMPKind `json:"igmpType"`
-	GroupAddress   *IPBlock `json:"groupAddress,omitempty"`
+	IGMPType       *int32  `json:"igmpType"`
+	GroupAddress   *string `json:"groupAddress,omitempty"`
 }

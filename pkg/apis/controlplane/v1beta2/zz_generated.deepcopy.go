@@ -954,13 +954,13 @@ func (in *Service) DeepCopyInto(out *Service) {
 	}
 	if in.IGMPType != nil {
 		in, out := &in.IGMPType, &out.IGMPType
-		*out = new(string)
+		*out = new(int32)
 		**out = **in
 	}
 	if in.GroupAddress != nil {
 		in, out := &in.GroupAddress, &out.GroupAddress
-		*out = new(IPBlock)
-		(*in).DeepCopyInto(*out)
+		*out = new(string)
+		**out = **in
 	}
 	return
 }

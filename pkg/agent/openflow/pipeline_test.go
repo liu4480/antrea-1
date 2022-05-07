@@ -39,14 +39,12 @@ func TestBuildPipeline(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		ipStack         ipStack
-		enableMulticast bool
 		features        []feature
 		expectedTables  map[binding.PipelineID][]*Table
 	}{
 
 		{
 				ipStack:         dualStack,
-				enableMulticast: false,
 				features: []feature{
 					&featurePodConnectivity{ipProtocols: ipStackMap[dualStack]},
 					&featureNetworkPolicy{enableAntreaPolicy: true},
@@ -94,7 +92,6 @@ func TestBuildPipeline(t *testing.T) {
 			},
 			{
 				ipStack:         ipv6Only,
-				enableMulticast: false,
 				features: []feature{
 					&featurePodConnectivity{ipProtocols: ipStackMap[ipv6Only]},
 					&featureNetworkPolicy{enableAntreaPolicy: true},
@@ -138,7 +135,6 @@ func TestBuildPipeline(t *testing.T) {
 			},
 			{
 				ipStack:         ipv4Only,
-				enableMulticast: false,
 				features: []feature{
 					&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only]},
 					&featureNetworkPolicy{enableAntreaPolicy: true},
@@ -177,7 +173,6 @@ func TestBuildPipeline(t *testing.T) {
 			},
 			{
 				ipStack:         ipv4Only,
-				enableMulticast: false,
 				features: []feature{
 					&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only]},
 					&featureNetworkPolicy{enableAntreaPolicy: true},
@@ -223,7 +218,6 @@ func TestBuildPipeline(t *testing.T) {
 			},
 		{
 			ipStack:         ipv4Only,
-			enableMulticast: true,
 			features: []feature{
 				&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only], enableMulticast: true},
 				&featureNetworkPolicy{enableAntreaPolicy: true},
@@ -266,25 +260,22 @@ func TestBuildPipeline(t *testing.T) {
 					ARPResponderTable,
 				},
 				pipelineMulticast: {
-					MulticastIGMPTable,
-					MulticastIGMPMetricTable,
-					MulticastGroupTable,
+					MulticastIGMPEgressTable,
 					MulticastEgressRuleTable,
 					MulticastEgressMetricTable,
+
+					MulticastRoutingTable,
+
+					MulticastIGMPIngressTable,
+					MulticastIGMPIngressMetricTable,
+
 					MulticastOutputTable,
 				},
 			},
 		},
 	} {
-		pipelineIDs := []binding.PipelineID{pipelineRoot, pipelineIP}
-		if tc.ipStack != ipv6Only {
-			pipelineIDs = append(pipelineIDs, pipelineARP)
-		}
-		if tc.enableMulticast {
-			pipelineIDs = append(pipelineIDs, pipelineMulticast)
-		}
 		pipelineRequiredTablesMap := make(map[binding.PipelineID]map[*Table]struct{})
-		for _, pipelineID := range pipelineIDs {
+		for pipelineID := range tc.expectedTables {
 			pipelineRequiredTablesMap[pipelineID] = make(map[*Table]struct{})
 		}
 		pipelineRequiredTablesMap[pipelineRoot][PipelineRootClassifierTable] = struct{}{}
@@ -310,12 +301,10 @@ func TestBuildPipeline(t *testing.T) {
 
 			tables := tc.expectedTables[pipelineID]
 			for i := 0; i < len(tables)-1; i++ {
-				fmt.Println(tables[i].GetName(), tables[i].GetID())
 				require.NotNil(t, tables[i].ofTable, "table %q should be initialized", tables[i].name)
 				require.Less(t, tables[i].GetID(), tables[i+1].GetID(), fmt.Sprintf("id of table %q should less than that of table %q", tables[i].GetName(), tables[i+1].GetName()))
 			}
-			//require.NotNil(t, tables[len(tables)-1].ofTable, "table %q should be initialized", tables[len(tables)-1].name)
-			require.NotNil(t, tables, "table %+v should be initialized: ", tables, tc.expectedTables[pipelineID])
+			require.NotNil(t, tables[len(tables)-1].ofTable, "table %q should be initialized", tables[len(tables)-1].name)
 		}
 		reset()
 	}

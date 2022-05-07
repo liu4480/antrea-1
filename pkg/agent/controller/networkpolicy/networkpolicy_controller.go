@@ -109,7 +109,6 @@ type Controller struct {
 	// denyConnStore is for storing deny connections for flow exporter.
 	denyConnStore *connections.DenyConnectionStore
 	mcastController       *multicastController
-	mcastValidator        *McastValidator
 }
 
 // NewNetworkPolicyController returns a new *Controller.
@@ -120,6 +119,7 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 	podUpdateSubscriber channel.Subscriber,
 	groupCounters []proxytypes.GroupCounter,
 	groupIDUpdates <-chan string,
+	mcastController *multicastController,
 	antreaPolicyEnabled bool,
 	antreaProxyEnabled bool,
 	statusManagerEnabled bool,
@@ -146,12 +146,11 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 		if c.fqdnController, err = newFQDNController(ofClient, idAllocator, dnsServerOverride, c.enqueueRule, v4Enabled, v6Enabled); err != nil {
 			return nil, err
 		}
-		if c.mcastController, err = newMulticastController(ofClient, ifaceStore, c.ruleCache, podUpdateSubscriber); err != nil {
-			return nil, err
+		if c.multicastEnabled {
+			c.mcastController = mcastController
+			c.mcastController.initialize(c.ruleCache)
 		}
-		if c.mcastValidator, err = newMcastValidator(c.mcastController); err != nil {
-			return nil, err
-		}
+
 		if c.ofClient != nil {
 			c.ofClient.RegisterPacketInHandler(uint8(openflow.PacketInReasonNP), "dnsresponse", c.fqdnController)
 		}
@@ -574,10 +573,6 @@ func (c *Controller) syncRule(key string) error {
 		c.statusManager.SetRuleRealization(key, rule.PolicyUID)
 	}
 	return nil
-}
-
-func (c *Controller) GetMcastValidator() *McastValidator {
-	return c.mcastValidator
 }
 
 // syncRules calls the reconciler to sync all the rules after watchers complete full sync.

@@ -1826,20 +1826,21 @@ func schema_pkg_apis_controlplane_v1beta2_Service(ref common.ReferenceCallback) 
 					"igmpType": {
 						SchemaProps: spec.SchemaProps{
 							Description: "IGMPType and GroupAddress can only be specified, when the Protocol is IGMP.",
-							Type:        []string{"string"},
-							Format:      "",
+							Type:        []string{"integer"},
+							Format:      "int32",
 						},
 					},
 					"groupAddress": {
 						SchemaProps: spec.SchemaProps{
-							Ref: ref("antrea.io/antrea/pkg/apis/controlplane/v1beta2.IPBlock"),
+							Type:   []string{"string"},
+							Format: "",
 						},
 					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"antrea.io/antrea/pkg/apis/controlplane/v1beta2.IPBlock", "k8s.io/apimachinery/pkg/util/intstr.IntOrString"},
+			"k8s.io/apimachinery/pkg/util/intstr.IntOrString"},
 	}
 }
 

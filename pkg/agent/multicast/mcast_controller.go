@@ -225,7 +225,7 @@ type Controller struct {
 	mRouteClient         *MRouteClient
 	ovsBridgeClient      ovsconfig.OVSBridgeClient
 	queryGroupId         binding.GroupIDType
-	mcastValidator       Validator
+	mcastValidator       Validate
 	anpEnabled           bool
 }
 
@@ -237,7 +237,7 @@ func NewMulticastController(ofClient openflow.Client,
 	multicastInterfaces sets.String,
 	ovsBridgeClient ovsconfig.OVSBridgeClient,
 	podUpdateSubscriber channel.Subscriber,
-	mcastValidator Validator,
+	mcastValidator Validate,
 	anpEnabled bool) *Controller {
 	eventCh := make(chan *mcastGroupEvent, workerCount)
 	groupSnooper := newSnooper(ofClient, ifaceStore, eventCh, anpEnabled)
@@ -278,11 +278,6 @@ func (c *Controller) Initialize() error {
 	if err != nil {
 		klog.ErrorS(err, "Failed to install multicast initial flows")
 		return err
-	}
-	c.queryGroupId = c.v4GroupAllocator.Allocate()
-	klog.Infof("multicast/mcast_controller: c.queryGroupId=%v", c.queryGroupId)
-	if c.anpEnabled {
-		c.mcastValidator.Initialize(c.queryGroupId)
 	}
 	return nil
 }
@@ -410,15 +405,15 @@ func (c *Controller) syncGroup(groupKey string) error {
 			klog.InfoS("Removed multicast group from cache after all members left", "group", groupKey)
 			return nil
 		}
-		// Reinstall OpenFlow group because the local pod receivers have changed.
-		if err := c.ofClient.InstallMulticastGroup(status.ofGroupID, nil, false, memberPorts); err != nil {
+		// Reinstall OpenFlow group because the local Pod receivers have changed.
+		if err := c.ofClient.InstallMulticastGroup(status.ofGroupID, memberPorts); err != nil {
 			return err
 		}
 		klog.V(2).InfoS("Updated OpenFlow group for local receivers", "group", groupKey, "ofGroup", status.ofGroupID, "localReceivers", memberPorts)
 		return nil
 	}
 	// Install OpenFlow group for a new multicast group which has local Pod receivers joined.
-	if err := c.ofClient.InstallMulticastGroup(status.ofGroupID, nil, false, memberPorts); err != nil {
+	if err := c.ofClient.InstallMulticastGroup(status.ofGroupID, memberPorts); err != nil {
 		return err
 	}
 	klog.V(2).InfoS("Installed OpenFlow group for local receivers", "group", groupKey, "ofGroup", status.ofGroupID, "localReceivers", memberPorts)

@@ -295,10 +295,12 @@ type Client interface {
 	UninstallTrafficControlReturnPortFlow(returnOFPort uint32) error
 
 
-	InstallMulticastGroup(groupID binding.GroupIDType,
+	InstallIGMPGroup(groupID binding.GroupIDType,
 		blockedPorts map[uint32]bool,
 		queryGroup bool,
 		localReceivers []uint32) error
+
+	InstallMulticastGroup(ofGroupID binding.GroupIDType, localReceivers []uint32) error
 }
 
 // GetFlowTableStatus returns an array of flow table status.
@@ -1193,12 +1195,24 @@ func (c *client) UninstallTrafficControlReturnPortFlow(returnOFPort uint32) erro
 	return c.deleteFlows(c.featurePodConnectivity.tcCachedFlows, cacheKey)
 }
 
-func (c *client) InstallMulticastGroup(groupID binding.GroupIDType, blockedPorts map[uint32]bool, queryGroup bool, localReceivers []uint32) error {
+func (c *client) InstallIGMPGroup(groupID binding.GroupIDType, blockedPorts map[uint32]bool, queryGroup bool, localReceivers []uint32) error {
 	c.replayMutex.RLock()
 	defer c.replayMutex.RUnlock()
 
 	targetPorts := append([]uint32{config.HostGatewayOFPort}, localReceivers...)
-	if err := c.featureMulticast.multicastGroup(groupID, blockedPorts, queryGroup, targetPorts...); err != nil {
+	if err := c.featureMulticast.multicastQueryGroups(groupID, blockedPorts, queryGroup, targetPorts...); err != nil {
+		return err
+	}
+	return nil
+}
+
+
+func (c *client) InstallMulticastGroup(groupID binding.GroupIDType, localReceivers []uint32) error {
+	c.replayMutex.RLock()
+	defer c.replayMutex.RUnlock()
+
+	targetPorts := append([]uint32{config.HostGatewayOFPort}, localReceivers...)
+	if err := c.featureMulticast.multicastReceiversGroup(groupID, targetPorts...); err != nil {
 		return err
 	}
 	return nil

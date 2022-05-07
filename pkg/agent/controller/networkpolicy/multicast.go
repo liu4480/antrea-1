@@ -5,10 +5,7 @@ import (
 	"antrea.io/antrea/pkg/agent/util"
 	"antrea.io/antrea/pkg/util/channel"
 	"fmt"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/util/workqueue"
-	"math"
 	"net"
 	"sync"
 	"time"
@@ -29,11 +26,6 @@ const (
 	unicast   ruleType = 0
 	igmp      ruleType = 1
 	multicast ruleType = 2
-
-	queryInterval = time.Second * 125
-	// mcastGroupTimeout is the timeout to detect a group as stale if no IGMP report is received within the time.
-	mcastGroupTimeout = queryInterval * 3
-	resyncPeriod = 0 * time.Minute
 
 	groupJoin eventType = iota
 	groupLeave
@@ -73,8 +65,6 @@ type multicastController struct {
 	queryGroupId         binding.GroupIDType
 	groupInstalled       bool
 	queryGroupStatus     GroupMemberStatus
-	podMap               map[string]*corev1.Pod
-	podMapMutex          sync.RWMutex
 
 	ruleCache            *ruleCache
 	mcastItemRuleIDMap   map[string]mcastItem
@@ -82,7 +72,6 @@ type multicastController struct {
 	ruleIDGroupAddressMap map[string]sets.String
 	ruleIDGroupMapMutex sync.RWMutex
 	eventCh             chan mcastGroupEvent
-	queue               workqueue.RateLimitingInterface
 }
 
 func (c *multicastController) syncQueryGroup(stopCh <- chan struct{}) {
@@ -121,7 +110,7 @@ func (c *multicastController) syncQueryGroup(stopCh <- chan struct{}) {
 						klog.Errorf("failed to update query group: %+v", err)
 					}
 				} else {
-					klog.Infof("no member in query group: %+v", c.queryGroupStatus.localMembers)
+					klog.V(2).InfoS("no member in query group: ", c.queryGroupStatus.localMembers)
 				}
 			} else if event.eType == rulechanged {
 				if len(c.queryGroupStatus.localMembers) > 0 {
@@ -130,7 +119,7 @@ func (c *multicastController) syncQueryGroup(stopCh <- chan struct{}) {
 						klog.Errorf("failed to update query group: %+v", err)
 					}
 				} else {
-					klog.Infof("no member in query group: %+v", c.queryGroupStatus.localMembers)
+					klog.V(2).InfoS("no member in query group: ", c.queryGroupStatus.localMembers)
 				}
 			}
 		case <-stopCh:
@@ -184,14 +173,14 @@ func (c *multicastController) updateGroup() error {
 			return nil
 		}
 		// Reinstall OpenFlow group because the local pod receivers have changed.
-		if err := c.ofClient.InstallMulticastGroup(c.queryGroupStatus.ofGroupID, blocked_ports, true, memberPorts); err != nil {
+		if err := c.ofClient.InstallIGMPGroup(c.queryGroupStatus.ofGroupID, blocked_ports, true, memberPorts); err != nil {
 			return err
 		}
 		klog.V(2).InfoS("Updated OpenFlow group for local receivers", "group", groupKey, "ofGroup", c.queryGroupStatus.ofGroupID, "localReceivers", memberPorts)
 		return nil
 	}
 	// Install OpenFlow group for a new multicast group which has local Pod receivers joined.
-	if err := c.ofClient.InstallMulticastGroup(c.queryGroupId, blocked_ports, true, memberPorts); err != nil {
+	if err := c.ofClient.InstallIGMPGroup(c.queryGroupId, blocked_ports, true, memberPorts); err != nil {
 		return err
 	}
 	klog.V(2).InfoS("Installed OpenFlow group for local receivers", "group", groupKey, "ofGroup", c.queryGroupStatus.ofGroupID, "localReceivers", memberPorts)
@@ -208,8 +197,8 @@ func (c *multicastController) updateGroup() error {
 	return nil
 }
 
-func (c *multicastController) initialize(groupID binding.GroupIDType) bool {
-	c.queryGroupId = groupID
+func (c *multicastController) initialize(cache *ruleCache) bool {
+	c.ruleCache = cache
 	c.queryGroupStatus = GroupMemberStatus{
 		group: mcastAllHosts,
 		localMembers: make(map[string]time.Time),
@@ -444,20 +433,17 @@ func (c *multicastController) memberChanged(e interface{}) {
 	}
 }
 
-func newMulticastController(ofClient openflow.Client,
+func NewMulticastNetworkPolicyController(ofClient openflow.Client,
 							ifaceStore interfacestore.InterfaceStore,
-							ruleCache *ruleCache,
 							podUpdateSubscriber channel.Subscriber,
-							) (*multicastController, error) {
+							queryGroupID binding.GroupIDType) (*multicastController, error) {
 	mcastController := &multicastController{
 		ofClient: ofClient,
 		ifaceStore: ifaceStore,
 		groupInstalled: false,
-		podMap: make(map[string]*corev1.Pod),
-		ruleCache: ruleCache,
 		mcastItemRuleIDMap: make(map[string]mcastItem),
 		ruleIDGroupAddressMap: make(map[string]sets.String),
-		queryGroupId: math.MaxUint32,
+		queryGroupId: queryGroupID,
 		eventCh: make(chan mcastGroupEvent),
 	}
 	klog.Infof("podUpdateSubscriber.Subscribe(mcastController.memberChanged)")
@@ -465,28 +451,10 @@ func newMulticastController(ofClient openflow.Client,
 	return mcastController, nil
 }
 
-type McastValidator struct {
-	mcastController *multicastController
-}
-
-func newMcastValidator(c *multicastController) (*McastValidator, error) {
-	if c == nil {
-		return nil, fmt.Errorf("multicastController should not be nil")
-	}
-	m := &McastValidator{
-		mcastController: c,
-	}
-	return m, nil
-}
-
-func (m *McastValidator) Initialize (groupID binding.GroupIDType) bool {
-	return m.mcastController.initialize(groupID)
-}
-
-func (m *McastValidator) Validation (iface *interfacestore.InterfaceConfig, groupAddress net.IP) (*v1alpha1.RuleAction, apitypes.UID, string, error) {
+func (m *multicastController) Validation (iface *interfacestore.InterfaceConfig, groupAddress net.IP) (*v1alpha1.RuleAction, apitypes.UID, string, error) {
 	groupAddressCidr := net.IPNet{
-		IP: groupAddress,
-		Mask: net.CIDRMask(32,32),
-	}
-	return m.mcastController.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
+							IP: groupAddress,
+							Mask: net.CIDRMask(32,32),
+						}
+	return m.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
 }

@@ -245,12 +245,15 @@ func (f *featureEgress) getRequiredTables() []*Table {
 
 func (f *featureMulticast) getRequiredTables() []*Table {
 	return []*Table{
-		MulticastIGMPTable,
-		MulticastIGMPMetricTable,
-		MulticastGroupTable,
+		MulticastIGMPEgressTable,
 		MulticastEgressRuleTable,
 		MulticastEgressMetricTable,
-		//MulticastTable,
+
+		MulticastRoutingTable,
+
+		MulticastIGMPIngressTable,
+		MulticastIGMPIngressMetricTable,
+
 		MulticastOutputTable,
 	}
 }

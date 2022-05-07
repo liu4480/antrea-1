@@ -15,7 +15,6 @@
 package networkpolicy
 
 import (
-	crdv1alpha1 "antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -324,23 +323,25 @@ func (r *reconciler) getRuleType (rule *CompletedRule) ruleType {
 		return unicast
 	}
 	for _, service := range rule.Services {
-		if service.IGMPType != nil && ((*service.IGMPType == string(crdv1alpha1.IGMPQuery)) || (*service.IGMPType == string(crdv1alpha1.IGMPReport))) {
+		if service.IGMPType != nil {
 			//this is IGMP rule
 			return igmp
 		}
 	}
 
 	for _, ipBlock := range rule.To.IPBlocks {
-		ip := net.IP(ipBlock.CIDR.IP)
+		ipAddr := ip.IPNetToNetIPNet(&ipBlock.CIDR)
+		if ipAddr == nil {
+			continue
+		}
 		ipLen := net.IPv4len
-		if ip.To4() == nil {
+		if ipAddr.IP.To4() == nil {
 			ipLen = net.IPv6len
 		}
 		mask := net.CIDRMask(int(ipBlock.CIDR.PrefixLength), 8*ipLen)
-		maskedIP := ip.Mask(mask)
+		maskedIP := ipAddr.IP.Mask(mask)
 
 		if maskedIP.IsMulticast() {
-			klog.Infof("multicast")
 			return multicast
 		}
 	}
@@ -376,8 +377,14 @@ func (r *reconciler) getOFRuleTable(rule *CompletedRule) (uint8, ruleType) {
 		//if it is normal multicast traffic
 		tableID = ruleTables[1].GetID()
 	case igmp:
-		ruleTables = openflow.GetAntreaIGMPTables()
-		tableID = ruleTables[0].GetID()
+		if rule.Direction == v1beta2.DirectionIn {
+			ruleTables = openflow.GetAntreaIGMPIngressTables()
+			tableID = ruleTables[0].GetID()
+		} else {
+			ruleTables = openflow.GetAntreaIGMPEgressTables()
+			tableID = ruleTables[0].GetID()
+		}
+
 	case multicast:
 		// multicast np only supports egress so far
 		ruleTables = openflow.GetAntreaMulticastEgressTable()
@@ -965,12 +972,7 @@ func (r *reconciler) getMcastGroupAddress(rule * CompletedRule) ([]string, bool)
 		isIGMP = true
 		for _, service := range rule.Services {
 				if service.GroupAddress != nil {
-					groupAddressCidr := net.IPNet{
-						IP: net.IP(service.GroupAddress.CIDR.IP),
-						Mask: net.CIDRMask(int(service.GroupAddress.CIDR.PrefixLength),32),
-					}
-
-					groupAddresses = append(groupAddresses, groupAddressCidr.String())
+					groupAddresses = append(groupAddresses, *service.GroupAddress)
 					klog.V(4).Infof("getMcastGroupAddress service.GroupAddresses %+v", service.GroupAddress)
 				}
 			}

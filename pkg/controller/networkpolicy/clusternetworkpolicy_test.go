@@ -1276,10 +1276,8 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
 										IGMPType: &query,
-										GroupAddresses: []crdv1alpha1.IPBlock{
-											{
-												CIDR: "224.0.0.1/32",
-											},
+										GroupAddress: &crdv1alpha1.IPBlock{
+											CIDR: "224.0.0.1/32",
 										},
 									},
 								},
@@ -1305,9 +1303,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 							{
 								Protocol: &protocolIGMP,
 								IGMPType: &queryStr,
-								GroupAddresses: []controlplane.IPBlock{
-										*ipb,
-								},
+								GroupAddress: ipb,
 							},
 						},
 						Priority: 0,
@@ -1341,10 +1337,8 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
 										IGMPType: &report,
-										GroupAddresses: []crdv1alpha1.IPBlock{
-											{
-												CIDR: "225.1.2.3/32",
-											},
+										GroupAddress: &crdv1alpha1.IPBlock{
+											CIDR: "225.1.2.3/32",
 										},
 									},
 								},
@@ -1370,9 +1364,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 							{
 								Protocol: &protocolIGMP,
 								IGMPType: &reportStr,
-								GroupAddresses: []controlplane.IPBlock{
-									*ipb1,
-								},
+								GroupAddress: ipb1,
 							},
 						},
 						Priority: 0,

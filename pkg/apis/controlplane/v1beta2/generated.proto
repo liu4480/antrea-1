@@ -381,9 +381,9 @@ message Service {
 
   // IGMPType and GroupAddress can only be specified, when the Protocol is IGMP.
   // +optional
-  optional string igmpType = 6;
+  optional int32 igmpType = 6;
 
-  optional IPBlock groupAddress = 7;
+  optional string groupAddress = 7;
 }
 
 // ServiceReference represents reference to a v1.Service.

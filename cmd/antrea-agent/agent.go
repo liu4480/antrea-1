@@ -281,7 +281,12 @@ func run(o *Options) error {
 	// if AntreaPolicy feature is enabled.
 	statusManagerEnabled := antreaPolicyEnabled
 	loggingEnabled := antreaPolicyEnabled
-
+	mcastNPController, err := networkpolicy.NewMulticastNetworkPolicyController(ofClient, ifaceStore, podUpdateChannel, v4GroupIDAllocator.Allocate())
+	if !multicastEnabled {
+		mcastNPController = nil
+	} else if err != nil {
+		return fmt.Errorf("error creating new NetworkPolicy controller: %v", err)
+	}
 	networkPolicyController, err := networkpolicy.NewNetworkPolicyController(
 		antreaClientProvider,
 		ofClient,
@@ -290,6 +295,7 @@ func run(o *Options) error {
 		podUpdateChannel,
 		groupCounters,
 		groupIDUpdates,
+		mcastNPController,
 		antreaPolicyEnabled,
 		antreaProxyEnabled,
 		statusManagerEnabled,
@@ -298,8 +304,7 @@ func run(o *Options) error {
 		asyncRuleDeleteInterval,
 		o.config.DNSServerOverride,
 		v4Enabled,
-		v6Enabled,
-		)
+		v6Enabled)
 	if err != nil {
 		return fmt.Errorf("error creating new NetworkPolicy controller: %v", err)
 	}
@@ -509,10 +514,6 @@ func run(o *Options) error {
 		}
 		go ipamController.Run(stopCh)
 	}
-	//  Start the localPodInformer
-	if localPodInformer != nil {
-		go localPodInformer.Run(stopCh)
-	}
 
 	if features.DefaultFeatureGate.Enabled(features.SecondaryNetwork) {
 		// Create the NetworkAttachmentDefinition client, which handles access to secondary network object definition from the API Server.
@@ -583,7 +584,6 @@ func run(o *Options) error {
 		if err != nil {
 			return fmt.Errorf("failed to create multicast socket")
 		}
-		mcastValidator := networkPolicyController.GetMcastValidator()
 		mcastController := multicast.NewMulticastController(
 			ofClient,
 			v4GroupIDAllocator,
@@ -593,7 +593,7 @@ func run(o *Options) error {
 			sets.NewString(append(o.config.MulticastInterfaces, nodeConfig.NodeTransportInterfaceName)...),
 			ovsBridgeClient,
 			podUpdateChannel,
-			mcastValidator,
+			mcastNPController,
 			features.DefaultFeatureGate.Enabled(features.AntreaPolicy))
 		if err := mcastController.Initialize(); err != nil {
 			return err

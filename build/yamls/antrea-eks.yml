@@ -980,13 +980,13 @@ spec:
                               type: object
                               properties:
                                 igmpType:
-                                  type: string
+                                  type: integer
+                                  enum: [ 17, 18, 22, 34 ]
                                 groupAddress:
-                                  type: object
-                                  properties:
-                                    cidr:
-                                      type: string
-                                      format: cidr
+                                  type: string
+                                  oneOf:
+                                    - format: ipv4
+                                    - format: ipv6
                       from:
                         type: array
                         items:
@@ -1205,13 +1205,13 @@ spec:
                               type: object
                               properties:
                                 igmpType:
-                                  type: string
+                                  type: integer
+                                  enum: [17, 18, 22, 34]
                                 groupAddress:
-                                  type: object
-                                  properties:
-                                    cidr:
-                                      type: string
-                                      format: cidr
+                                  type: string
+                                  oneOf:
+                                    - format: ipv4
+                                    - format: ipv6
                       to:
                         type: array
                         items:
