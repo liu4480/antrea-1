@@ -1,9 +1,6 @@
 package networkpolicy
 
 import (
-	"antrea.io/antrea/pkg/agent/types"
-	"antrea.io/antrea/pkg/agent/util"
-	"antrea.io/antrea/pkg/util/channel"
 	"fmt"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"net"
@@ -15,9 +12,12 @@ import (
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/openflow"
+	"antrea.io/antrea/pkg/agent/types"
+	"antrea.io/antrea/pkg/agent/util"
 	crdv1beta "antrea.io/antrea/pkg/apis/controlplane/v1beta2"
 	"antrea.io/antrea/pkg/apis/crd/v1alpha1"
 	binding "antrea.io/antrea/pkg/ovs/openflow"
+	"antrea.io/antrea/pkg/util/channel"
 )
 
 type ruleType int
@@ -148,7 +148,8 @@ func (c *multicastController) updateGroup() error {
 			klog.InfoS("Failed to find interface from cache", "interface", memberInterfaceName)
 			continue
 		}
-		action, _, name, _ := c.validation(obj, *mcastAllHostsCIDR, crdv1beta.DirectionIn)
+		//*v1alpha1.RuleAction, apitypes.UID, *crdv1beta.NetworkPolicyType, string, error
+		action, _, _, name, _ := c.validation(obj, *mcastAllHostsCIDR, crdv1beta.DirectionIn)
 		if name != "" && (*action == v1alpha1.RuleActionDrop) {
 			klog.V(4).Infof("policy will block ofport: %d, pod: %s/%s", obj.OFPort, obj.PodNamespace, obj.PodName)
 			blocked_ports[uint32(obj.OFPort)] = true
@@ -352,12 +353,12 @@ func (c *multicastController) cleanupGroupAddressForTableIDsUnlocked (groupAddre
 }
 
 func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
-	groupAddress net.IPNet, direction crdv1beta.Direction) (*v1alpha1.RuleAction, apitypes.UID, string, error) {
-	action, uuid, ruleName := v1alpha1.RuleActionDrop, apitypes.UID("0"), ""
+	groupAddress net.IPNet, direction crdv1beta.Direction) (*v1alpha1.RuleAction, apitypes.UID, *crdv1beta.NetworkPolicyType, string, error) {
+	action, uuid, ruleType, ruleName := v1alpha1.RuleActionDrop, apitypes.UID("0"), crdv1beta.NetworkPolicyType(""),""
 	if iface == nil {
 		//check the whole group
 		klog.Info("Iface should not be empty")
-		return nil, apitypes.UID(""), "", fmt.Errorf("iface should not be empty")
+		return nil, apitypes.UID(""), nil, "", fmt.Errorf("iface should not be empty")
 	}
 	ns, podname := iface.PodNamespace, iface.PodName
 	c.mcastItemMutex.Lock()
@@ -368,7 +369,7 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 		if !exists {
 			klog.V(2).Infof("rule for group %s does not exist: %+v", groupAddress.String(), c.mcastItemRuleIDMap)
 			action = v1alpha1.RuleActionAllow
-			return &action, apitypes.UID(""), "", nil
+			return &action, apitypes.UID(""), nil, "", nil
 		}
 	}
 	var matchedRule *CompletedRule
@@ -394,13 +395,13 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 		}
 	}
 	if matchedRule != nil {
-		action, uuid, ruleName = *matchedRule.Action, matchedRule.PolicyUID, matchedRule.Name
+		action, uuid, ruleType,ruleName = *matchedRule.Action, matchedRule.PolicyUID,matchedRule.SourceRef.Type,  matchedRule.Name
 	} else {
 		action, uuid, ruleName = v1alpha1.RuleActionAllow, apitypes.UID(""), ""
 	}
 	klog.V(4).Infof("validation: action %v, uuid %v, ruleName %v, found %v",
 		action, uuid, ruleName)
-	return &action, uuid, ruleName, nil
+	return &action, uuid, &ruleType, ruleName, nil
 }
 
 func (c *multicastController) run(stopCh <- chan struct{}) {
@@ -451,10 +452,21 @@ func NewMulticastNetworkPolicyController(ofClient openflow.Client,
 	return mcastController, nil
 }
 
-func (m *multicastController) Validation (iface *interfacestore.InterfaceConfig, groupAddress net.IP) (*v1alpha1.RuleAction, apitypes.UID, string, error) {
+func (m *multicastController) Validation (iface *interfacestore.InterfaceConfig, groupAddress net.IP) (interface{}, error) {
 	groupAddressCidr := net.IPNet{
-							IP: groupAddress,
-							Mask: net.CIDRMask(32,32),
-						}
-	return m.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
+		IP: groupAddress,
+		Mask: net.CIDRMask(32,32),
+	}
+
+	action, uuid, npType, name, err := m.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
+	ret := types.MulticastNPValidation {
+		action,
+		uuid,
+		npType,
+		name,
+	}
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
