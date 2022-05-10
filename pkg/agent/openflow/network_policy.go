@@ -992,14 +992,14 @@ func (c *client) InstallPolicyRuleFlows(rule *types.PolicyRule) error {
 	return nil
 }
 
-func (f featureNetworkPolicy) isMulticastEgressRule(tableID uint8, isIngress bool) bool {
+func (f *featureNetworkPolicy) isMulticastEgressRule(tableID uint8, isIngress bool) bool {
 	if !f.enableMulticast || isIngress {
 		return false
 	}
 	return tableID == MulticastEgressRuleTable.GetID()
 }
 
-func (f featureNetworkPolicy) isMulticastIngressRule(tableID uint8, isIngress bool) bool {
+func (f *featureNetworkPolicy) isMulticastIngressRule(tableID uint8, isIngress bool) bool {
 	if !f.enableMulticast || !isIngress {
 		return false
 	}

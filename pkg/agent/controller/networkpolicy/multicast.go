@@ -2,12 +2,12 @@ package networkpolicy
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"net"
 	"sync"
 	"time"
 
 	apitypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
@@ -34,7 +34,6 @@ const (
 )
 
 var (
-	mcastAllHosts           = net.ParseIP("224.0.0.1").To4()
 	_, mcastAllHostsCIDR, _ = net.ParseCIDR("224.0.0.1/32")
 )
 
@@ -138,11 +137,11 @@ func (c *multicastController) groupHasInstalled() bool {
 }
 
 func (c *multicastController) updateGroup() error {
-	groupKey := mcastAllHosts.String()
+	groupKey := types.McastAllHosts.String()
 	c.queryGroupStatus.mutex.Lock()
 	defer c.queryGroupStatus.mutex.Unlock()
 	memberPorts := make([]uint32, 0)
-	blocked_ports := make(map[uint32]bool)
+	blockedPorts := make(map[uint32]bool)
 	for memberInterfaceName := range c.queryGroupStatus.localMembers {
 		obj, found := c.ifaceStore.GetInterfaceByName(memberInterfaceName)
 		if !found {
@@ -153,7 +152,7 @@ func (c *multicastController) updateGroup() error {
 		action, _, _, name, _ := c.validation(obj, *mcastAllHostsCIDR, crdv1beta.DirectionIn)
 		if name != "" && (*action == v1alpha1.RuleActionDrop) {
 			klog.V(4).Infof("policy will block ofport: %d, pod: %s/%s", obj.OFPort, obj.PodNamespace, obj.PodName)
-			blocked_ports[uint32(obj.OFPort)] = true
+			blockedPorts[uint32(obj.OFPort)] = true
 		}
 		memberPorts = append(memberPorts, uint32(obj.OFPort))
 	}
@@ -175,14 +174,14 @@ func (c *multicastController) updateGroup() error {
 			return nil
 		}
 		// Reinstall OpenFlow group because the local pod receivers have changed.
-		if err := c.ofClient.InstallIGMPGroup(c.queryGroupStatus.ofGroupID, blocked_ports, true, memberPorts); err != nil {
+		if err := c.ofClient.InstallIGMPGroup(c.queryGroupStatus.ofGroupID, blockedPorts, true, memberPorts); err != nil {
 			return err
 		}
 		klog.V(2).InfoS("Updated OpenFlow group for local receivers", "group", groupKey, "ofGroup", c.queryGroupStatus.ofGroupID, "localReceivers", memberPorts)
 		return nil
 	}
 	// Install OpenFlow group for a new multicast group which has local Pod receivers joined.
-	if err := c.ofClient.InstallIGMPGroup(c.queryGroupId, blocked_ports, true, memberPorts); err != nil {
+	if err := c.ofClient.InstallIGMPGroup(c.queryGroupId, blockedPorts, true, memberPorts); err != nil {
 		return err
 	}
 	klog.V(2).InfoS("Installed OpenFlow group for local receivers", "group", groupKey, "ofGroup", c.queryGroupStatus.ofGroupID, "localReceivers", memberPorts)
@@ -205,7 +204,7 @@ func (c *multicastController) initialize(cache *ruleCache) bool {
 	}
 	c.ruleCache = cache
 	c.queryGroupStatus = GroupMemberStatus{
-		group:          mcastAllHosts,
+		group:          types.McastAllHosts,
 		localMembers:   make(map[string]time.Time),
 		lastIGMPReport: time.Now(),
 		ofGroupID:      c.queryGroupId,
@@ -235,9 +234,9 @@ func (c *multicastController) addGroupAddressForTableIDs(ruleID string, priority
 	mcastGroupAddressSet := sets.String{}
 	for _, mcastGroupAddress := range mcastGroupAddresses {
 		item, exists := c.mcastItemRuleIDMap[mcastGroupAddress]
-		ip, cidr, err := net.ParseCIDR(mcastGroupAddress)
+		_, cidr, err := net.ParseCIDR(mcastGroupAddress)
 		if err != nil {
-			ip = net.ParseIP(mcastGroupAddress)
+			ip := net.ParseIP(mcastGroupAddress)
 			cidr = &net.IPNet{}
 			cidr.IP = ip
 			cidr.Mask = net.CIDRMask(32, 32)
@@ -275,9 +274,9 @@ func (c *multicastController) updateGroupAddressForTableIDs(ruleID string, prior
 	staleMcastGroupAddresses, ok := c.ruleIDGroupAddressMap[ruleID]
 	for _, mcastGroupAddress := range mcastGroupAddresses {
 		item, exists := c.mcastItemRuleIDMap[mcastGroupAddress]
-		ip, cidr, err := net.ParseCIDR(mcastGroupAddress)
+		_, cidr, err := net.ParseCIDR(mcastGroupAddress)
 		if err != nil {
-			ip = net.ParseIP(mcastGroupAddress)
+			ip := net.ParseIP(mcastGroupAddress)
 			cidr = &net.IPNet{}
 			cidr.IP = ip
 			cidr.Mask = net.CIDRMask(32, 32)
@@ -364,7 +363,7 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 	if iface == nil {
 		//check the whole group
 		klog.Info("Iface should not be empty")
-		return nil, apitypes.UID(""), nil, "", fmt.Errorf("iface should not be empty")
+		return nil, "", nil, "", fmt.Errorf("iface should not be empty")
 	}
 	ns, podname := iface.PodNamespace, iface.PodName
 	c.mcastItemMutex.Lock()
@@ -375,7 +374,7 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 		if !exists {
 			klog.V(2).Infof("rule for group %s does not exist: %+v", groupAddress.String(), c.mcastItemRuleIDMap)
 			action = v1alpha1.RuleActionAllow
-			return &action, apitypes.UID(""), nil, "", nil
+			return &action, "", nil, "", nil
 		}
 	}
 	var matchedRule *CompletedRule
@@ -404,7 +403,7 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 		ruleTypePtr = new(crdv1beta.NetworkPolicyType)
 		action, uuid, *ruleTypePtr, ruleName = *matchedRule.Action, matchedRule.PolicyUID, matchedRule.SourceRef.Type, matchedRule.Name
 	} else {
-		action, uuid, ruleName = v1alpha1.RuleActionAllow, apitypes.UID(""), ""
+		action, uuid, ruleName = v1alpha1.RuleActionAllow, "", ""
 	}
 	klog.V(4).Infof("validation: action %v, uuid %v, ruleName %v, ruleType %v",
 		action, uuid, ruleName, ruleTypePtr)
@@ -461,18 +460,18 @@ func NewMulticastNetworkPolicyController(ofClient openflow.Client,
 	return mcastController, nil
 }
 
-func (m *multicastController) Validation(iface *interfacestore.InterfaceConfig, groupAddress net.IP) (interface{}, error) {
+func (c *multicastController) Validation(iface *interfacestore.InterfaceConfig, groupAddress net.IP) (interface{}, error) {
 	groupAddressCidr := net.IPNet{
 		IP:   groupAddress,
 		Mask: net.CIDRMask(32, 32),
 	}
 
-	action, uuid, npType, name, err := m.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
+	action, uuid, npType, name, err := c.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
 	ret := types.MulticastNPValidation{
-		action,
-		uuid,
-		npType,
-		name,
+		RuleAction: action,
+		Uuid:       uuid,
+		NPType:     npType,
+		Name:       name,
 	}
 	if err != nil {
 		return nil, err

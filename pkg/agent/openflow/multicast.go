@@ -26,7 +26,6 @@ import (
 )
 
 var _, mcastCIDR, _ = net.ParseCIDR("224.0.0.0/4")
-var mcastAllHosts = net.ParseIP("224.0.0.1").To4()
 
 type featureMulticast struct {
 	cookieAllocator cookie.Allocator

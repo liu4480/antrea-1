@@ -1,19 +1,19 @@
 package networkpolicy
 
 import (
-	"antrea.io/antrea/pkg/util/channel"
 	"fmt"
 	"net"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/openflow"
 	openflowtest "antrea.io/antrea/pkg/agent/openflow/testing"
-	"github.com/stretchr/testify/require"
+	"antrea.io/antrea/pkg/util/channel"
 )
 
 func newMockMcastController(t *testing.T, controller *gomock.Controller) (*multicastController, *openflowtest.MockClient) {
@@ -48,7 +48,7 @@ func TestAddGroupAddressForTableIDs(t *testing.T) {
 			nil,
 			"queryRule01",
 			map[string]mcastItem{
-				"224.0.0.1": mcastItem{
+				"224.0.0.1": {
 					groupAddress: net.IPNet{
 						IP:   net.ParseIP("224.0.0.1"),
 						Mask: net.CIDRMask(32, 32),
@@ -99,7 +99,7 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 		{
 			"removeQueryGroup",
 			map[string]mcastItem{
-				"224.0.0.1": mcastItem{
+				"224.0.0.1": {
 					groupAddress: net.IPNet{
 						IP:   net.ParseIP("224.0.0.1"),
 						Mask: net.CIDRMask(32, 32),
@@ -108,7 +108,7 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 						"queryRule01": &priority,
 					},
 				},
-				"225.1.2.3": mcastItem{
+				"225.1.2.3": {
 					groupAddress: net.IPNet{
 						IP:   net.ParseIP("225.1.2.3"),
 						Mask: net.CIDRMask(32, 32),
@@ -121,7 +121,7 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 			nil,
 			"queryRule01",
 			map[string]mcastItem{
-				"225.1.2.3": mcastItem{
+				"225.1.2.3": {
 					groupAddress: net.IPNet{
 						IP:   net.ParseIP("225.1.2.3"),
 						Mask: net.CIDRMask(32, 32),

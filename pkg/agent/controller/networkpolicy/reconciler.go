@@ -955,7 +955,7 @@ func (r *reconciler) Forget(ruleID string) error {
 	}
 	if r.mcastController != nil {
 		groupAddresses, isIGMP := r.getMcastGroupAddress(lastRealized.CompletedRule)
-		klog.Infof("deleteing rule %v: groupAddresses %v, isIGMP %v", ruleID, groupAddresses, isIGMP)
+		klog.Infof("deleting rule %v: groupAddresses %v, isIGMP %v", ruleID, groupAddresses, isIGMP)
 		if isIGMP {
 			r.mcastController.deleteGroupAddressForTableIDs(ruleID, groupAddresses)
 		}
@@ -977,7 +977,7 @@ func (r *reconciler) getMcastGroupAddress(rule *CompletedRule) ([]string, bool) 
 			}
 		}
 		if len(groupAddresses) == 0 && rule.Direction == v1beta2.DirectionIn {
-			groupAddresses = append(groupAddresses, mcastAllHosts.String())
+			groupAddresses = append(groupAddresses, types.McastAllHosts.String())
 		}
 	} else {
 		isIGMP = false

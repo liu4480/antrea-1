@@ -1332,7 +1332,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 							Protocols: []crdv1alpha1.NetworkPolicyProtocol{
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
-										IGMPType: &report,
+										IGMPType:     &report,
 										GroupAddress: &reportAddr,
 									},
 								},

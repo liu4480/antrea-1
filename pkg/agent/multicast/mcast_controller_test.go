@@ -38,6 +38,7 @@ import (
 	multicasttest "antrea.io/antrea/pkg/agent/multicast/testing"
 	"antrea.io/antrea/pkg/agent/openflow"
 	openflowtest "antrea.io/antrea/pkg/agent/openflow/testing"
+	"antrea.io/antrea/pkg/agent/types"
 	ovsconfigtest "antrea.io/antrea/pkg/ovs/ovsconfig/testing"
 	"antrea.io/antrea/pkg/util/channel"
 )
@@ -112,7 +113,7 @@ func TestUpdateGroupMemberStatus(t *testing.T) {
 		iface: if1,
 	}
 	mctrl.addGroupMemberStatus(event)
-	mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, mcastAllHosts, uint32(openflow13.P_NORMAL), gomock.Any()).Times(len(queryVersions))
+	mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, uint32(openflow13.P_NORMAL), gomock.Any()).Times(len(queryVersions))
 	for _, e := range []*mcastGroupEvent{
 		{group: mgroup, eType: groupJoin, time: event.time.Add(time.Second * 20), iface: if1},
 		{group: mgroup, eType: groupJoin, time: event.time.Add(time.Second * 40), iface: if1},
@@ -160,7 +161,7 @@ func TestCheckLastMember(t *testing.T) {
 		}
 		_ = mctrl.groupCache.Add(status)
 		mctrl.addInstalledGroup(status.group.String())
-		mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, mcastAllHosts, uint32(openflow13.P_NORMAL), gomock.Any()).AnyTimes()
+		mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, uint32(openflow13.P_NORMAL), gomock.Any()).AnyTimes()
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {

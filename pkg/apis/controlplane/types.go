@@ -293,7 +293,7 @@ type Service struct {
 	ICMPType *int32
 	ICMPCode *int32
 
-	//IGMPType and GroupAddress can only be specified, when the Procotol is IGMP.
+	//IGMPType and GroupAddress can only be specified, when the Protocol is IGMP.
 	IGMPType     *int32
 	GroupAddress *string
 }

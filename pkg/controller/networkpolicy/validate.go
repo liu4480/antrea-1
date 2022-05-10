@@ -672,7 +672,7 @@ func igmpValidation(protocol crdv1alpha1.NetworkPolicyProtocol) (string, bool) {
 	groupIP := net.ParseIP(*protocol.IGMP.GroupAddress)
 	if groupIP.IsMulticast() == false {
 		return fmt.Sprintf("ipaddress %+v(cidr %s) is not multicast",
-			groupIP, protocol.IGMP.GroupAddress), false
+			groupIP, *protocol.IGMP.GroupAddress), false
 	}
 
 	return "", true

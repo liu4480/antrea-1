@@ -28,6 +28,7 @@ import (
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/openflow"
+	"antrea.io/antrea/pkg/agent/types"
 )
 
 const (
@@ -48,7 +49,6 @@ var (
 	igmpMaxResponseTime = time.Second * 10
 	// igmpQueryDstMac is the MAC address used in the dst MAC field in the IGMP query message
 	igmpQueryDstMac, _ = net.ParseMAC("01:00:5e:00:00:01")
-	mcastAllHosts      = net.ParseIP("224.0.0.1").To4()
 )
 
 type IGMPSnooper struct {
@@ -108,7 +108,7 @@ func (s *IGMPSnooper) queryIGMP(group net.IP, versions []uint8) error {
 		if s.anpEnabled {
 			outPort = 0
 		}
-		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, mcastAllHosts, outPort, igmp); err != nil {
+		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, outPort, igmp); err != nil {
 			return err
 		}
 		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version, "outPort", outPort)

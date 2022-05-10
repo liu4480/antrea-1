@@ -594,7 +594,7 @@ func run(o *Options) error {
 			ovsBridgeClient,
 			podUpdateChannel,
 			mcastNPController,
-			features.DefaultFeatureGate.Enabled(features.AntreaPolicy))
+			antreaPolicyEnabled)
 		if err := mcastController.Initialize(); err != nil {
 			return err
 		}
