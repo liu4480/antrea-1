@@ -83,7 +83,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 	selectorB := metav1.LabelSelector{MatchLabels: map[string]string{"foo2": "bar2"}}
 	selectorC := metav1.LabelSelector{MatchLabels: map[string]string{"foo3": "bar3"}}
 	selectorD := metav1.LabelSelector{MatchLabels: map[string]string{"internal.antrea.io/service-account": saA.Name}}
-	queryAddr := "224.0.0.1/"
+	queryAddr := "224.0.0.1"
 	reportAddr := "225.1.2.3"
 	labelSelectorA, _ := metav1.LabelSelectorAsSelector(&selectorA)
 	labelSelectorB, _ := metav1.LabelSelectorAsSelector(&selectorB)
@@ -1332,7 +1332,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 							Protocols: []crdv1alpha1.NetworkPolicyProtocol{
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
-										IGMPType: &report,
+										IGMPType:     &report,
 										GroupAddress: &reportAddr,
 									},
 								},

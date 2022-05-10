@@ -119,7 +119,7 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 	podUpdateSubscriber channel.Subscriber,
 	groupCounters []proxytypes.GroupCounter,
 	groupIDUpdates <-chan string,
-	mcastController *multicastController,
+	mcastValidator types.MulticastValidate,
 	antreaPolicyEnabled bool,
 	antreaProxyEnabled bool,
 	statusManagerEnabled bool,
@@ -147,8 +147,12 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 			return nil, err
 		}
 		if c.multicastEnabled {
-			c.mcastController = mcastController
-			c.mcastController.initialize(c.ruleCache)
+			if c.mcastController, err = newMulticastNetworkPolicyController(ofClient, ifaceStore, c.ruleCache); err != nil {
+				return nil, err
+			}
+			if mcastValidator != nil {
+				mcastValidator.RegisterMemberValidator(types.McastNPValidator, c.mcastController)
+			}
 		}
 
 		if c.ofClient != nil {
@@ -464,7 +468,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		}
 		go c.fqdnController.runRuleSyncTracker(stopCh)
 		if c.multicastEnabled {
-			go c.mcastController.run(stopCh)
+			go wait.Until(c.mcastController.worker, time.Second, stopCh)
 		}
 	}
 	klog.Infof("Waiting for all watchers to complete full sync")

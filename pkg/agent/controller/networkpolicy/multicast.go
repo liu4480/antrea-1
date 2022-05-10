@@ -1,41 +1,52 @@
+// Copyright 2022 Antrea Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package networkpolicy
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"net"
 	"sync"
-	"time"
 
 	apitypes "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/openflow"
 	"antrea.io/antrea/pkg/agent/types"
-	"antrea.io/antrea/pkg/agent/util"
 	crdv1beta "antrea.io/antrea/pkg/apis/controlplane/v1beta2"
 	"antrea.io/antrea/pkg/apis/crd/v1alpha1"
-	binding "antrea.io/antrea/pkg/ovs/openflow"
-	"antrea.io/antrea/pkg/util/channel"
+	"antrea.io/antrea/pkg/util/ip"
 )
 
 type ruleType int
-type eventType uint8
+
+type ruleEvent uint8
 
 const (
 	unicast   ruleType = 0
 	igmp      ruleType = 1
 	multicast ruleType = 2
 
-	groupJoin   eventType = 0
-	groupLeave  eventType = 1
-	rulechanged eventType = 2
-)
+	ruleAdd    ruleEvent = 1
+	ruleUpdate ruleEvent = 2
+	ruleDelete ruleEvent = 3
 
-var (
-	mcastAllHosts           = net.ParseIP("224.0.0.1").To4()
-	_, mcastAllHostsCIDR, _ = net.ParseCIDR("224.0.0.1/32")
+	groupAddressIndex = "groupAddressIndex"
 )
 
 type mcastItem struct {
@@ -43,360 +54,104 @@ type mcastItem struct {
 	ruleIDs      map[string]*uint16
 }
 
-type GroupMemberStatus struct {
-	group net.IP
-	// localMembers is a map for the local Pod member and its last update time, key is the Pod's interface name,
-	// and value is its last update time.
-	localMembers   map[string]time.Time
-	lastIGMPReport time.Time
-	mutex          sync.RWMutex
-	ofGroupID      binding.GroupIDType
+type mcastIGMPRule struct {
+	ruleID       string
+	priority     *uint16
+	groupAddress []string
+	event        ruleEvent
 }
 
-type mcastGroupEvent struct {
-	eType eventType
-	iface *interfacestore.InterfaceConfig
-}
-
+// multicastController handles only IGMP protocol. It stores the group address to RuleID map and
+// also rule to group addresses map
 type multicastController struct {
 	ofClient openflow.Client
 
 	ifaceStore interfacestore.InterfaceStore
+	ruleCache  *ruleCache
+	queue      workqueue.RateLimitingInterface
+	// key is the multicast group address.
+	mcastItemRuleCache cache.Indexer
 
-	queryGroupId     binding.GroupIDType
-	groupInstalled   bool
-	queryGroupStatus GroupMemberStatus
-
-	ruleCache             *ruleCache
-	mcastItemRuleIDMap    map[string]mcastItem
-	mcastItemMutex        sync.RWMutex
+	// key is ruleID while the value is list of group addresses.
 	ruleIDGroupAddressMap map[string]sets.String
 	ruleIDGroupMapMutex   sync.RWMutex
-	eventCh               chan mcastGroupEvent
 }
 
-func (c *multicastController) syncQueryGroup(stopCh <-chan struct{}) {
-	for {
-		select {
-		case event := <-c.eventCh:
-			klog.Info("resync query group")
-			if c.queryGroupId == 0 {
-				klog.Infof("c.queryGroupId == 0 %v", c.queryGroupId == 0)
-				return
-			}
-			now := time.Now()
-			if event.eType == groupJoin {
-				if event.iface != nil {
-					c.queryGroupStatus.mutex.Lock()
-					c.queryGroupStatus.localMembers[event.iface.InterfaceName] = now
-					c.queryGroupStatus.mutex.Unlock()
-					c.queryGroupStatus.lastIGMPReport = now
-					if len(c.queryGroupStatus.localMembers) > 0 {
-						err := c.updateGroup()
-						if err != nil {
-							klog.Errorf("failed to update query group: %+v", err)
-						}
-					} else {
-						klog.Infof("no member in query group: %+v", c.queryGroupStatus.localMembers)
-					}
-				}
-			} else if event.eType == groupLeave {
-				c.queryGroupStatus.mutex.Lock()
-				delete(c.queryGroupStatus.localMembers, event.iface.InterfaceName)
-				c.queryGroupStatus.mutex.Unlock()
-				c.queryGroupStatus.lastIGMPReport = now
-				if len(c.queryGroupStatus.localMembers) > 0 {
-					err := c.updateGroup()
-					if err != nil {
-						klog.Errorf("failed to update query group: %+v", err)
-					}
-				} else {
-					klog.V(2).InfoS("no member in query group: ", c.queryGroupStatus.localMembers)
-				}
-			} else if event.eType == rulechanged {
-				if len(c.queryGroupStatus.localMembers) > 0 {
-					err := c.updateGroup()
-					if err != nil {
-						klog.Errorf("failed to update query group: %+v", err)
-					}
-				} else {
-					klog.V(2).InfoS("no member in query group: ", c.queryGroupStatus.localMembers)
-				}
-			}
-		case <-stopCh:
-			return
-		}
-	}
+func groupAddressKey(obj interface{}) (string, error) {
+	group := obj.(*mcastItem)
+	return group.groupAddress.IP.String(), nil
 }
 
-func (c *multicastController) groupIsStale() bool {
-	return false
-}
-
-func (c *multicastController) groupHasInstalled() bool {
-	return c.groupInstalled
-}
-
-func (c *multicastController) updateGroup() error {
-	groupKey := mcastAllHosts.String()
-	c.queryGroupStatus.mutex.Lock()
-	defer c.queryGroupStatus.mutex.Unlock()
-	memberPorts := make([]uint32, 0)
-	blocked_ports := make(map[uint32]bool)
-	for memberInterfaceName := range c.queryGroupStatus.localMembers {
-		obj, found := c.ifaceStore.GetInterfaceByName(memberInterfaceName)
-		if !found {
-			klog.InfoS("Failed to find interface from cache", "interface", memberInterfaceName)
-			continue
-		}
-		//*v1alpha1.RuleAction, apitypes.UID, *crdv1beta.NetworkPolicyType, string, error
-		action, _, _, name, _ := c.validation(obj, *mcastAllHostsCIDR, crdv1beta.DirectionIn)
-		if name != "" && (*action == v1alpha1.RuleActionDrop) {
-			klog.V(4).Infof("policy will block ofport: %d, pod: %s/%s", obj.OFPort, obj.PodNamespace, obj.PodName)
-			blocked_ports[uint32(obj.OFPort)] = true
-		}
-		memberPorts = append(memberPorts, uint32(obj.OFPort))
+func groupAddressRuleIndexFunc(obj interface{}) ([]string, error) {
+	item := obj.(*mcastItem)
+	ruleIDs := make([]string, len(item.ruleIDs))
+	for ruleID := range item.ruleIDs {
+		ruleIDs = append(ruleIDs, ruleID)
 	}
-	if c.groupHasInstalled() {
-		if c.groupIsStale() {
-			// Remove the multicast flow entry if no local Pod is in the group.
-			if err := c.ofClient.UninstallMulticastFlows(c.queryGroupStatus.group); err != nil {
-				klog.ErrorS(err, "Failed to uninstall multicast flows", "group", groupKey)
-				return err
-			}
-			// Remove the multicast flow entry if no local Pod is in the group.
-			if err := c.ofClient.UninstallGroup(c.queryGroupStatus.ofGroupID); err != nil {
-				klog.ErrorS(err, "Failed to uninstall multicast group", "group", groupKey)
-				return err
-			}
-
-			c.groupInstalled = false
-			klog.InfoS("Removed multicast group from cache after all members left", "group", groupKey)
-			return nil
-		}
-		// Reinstall OpenFlow group because the local pod receivers have changed.
-		if err := c.ofClient.InstallIGMPGroup(c.queryGroupStatus.ofGroupID, blocked_ports, true, memberPorts); err != nil {
-			return err
-		}
-		klog.V(2).InfoS("Updated OpenFlow group for local receivers", "group", groupKey, "ofGroup", c.queryGroupStatus.ofGroupID, "localReceivers", memberPorts)
-		return nil
-	}
-	// Install OpenFlow group for a new multicast group which has local Pod receivers joined.
-	if err := c.ofClient.InstallIGMPGroup(c.queryGroupId, blocked_ports, true, memberPorts); err != nil {
-		return err
-	}
-	klog.V(2).InfoS("Installed OpenFlow group for local receivers", "group", groupKey, "ofGroup", c.queryGroupStatus.ofGroupID, "localReceivers", memberPorts)
-	// Install OpenFlow flow to forward packets to local Pod receivers which are included in the group.
-	if err := c.ofClient.InstallMulticastFlows(c.queryGroupStatus.group, c.queryGroupStatus.ofGroupID); err != nil {
-		klog.ErrorS(err, "Failed to install multicast flows", "group", c.queryGroupStatus.group)
-		return err
-	}
-	if err := c.ofClient.InstallMulticastIGMPQueryFlow(); err != nil {
-		klog.ErrorS(err, "Failed to install igmp query flows", "group", c.queryGroupStatus.group)
-		return err
-	}
-	c.groupInstalled = true
-	return nil
-}
-
-func (c *multicastController) initialize(cache *ruleCache) bool {
-	if cache == nil {
-		return false
-	}
-	c.ruleCache = cache
-	c.queryGroupStatus = GroupMemberStatus{
-		group:          mcastAllHosts,
-		localMembers:   make(map[string]time.Time),
-		lastIGMPReport: time.Now(),
-		ofGroupID:      c.queryGroupId,
-	}
-	now := time.Now()
-	ifaces := c.ifaceStore.GetInterfacesByType(interfacestore.ContainerInterface)
-	for _, iface := range ifaces {
-		c.queryGroupStatus.localMembers[iface.InterfaceName] = now
-	}
-	c.queryGroupStatus.lastIGMPReport = now
-	if len(c.queryGroupStatus.localMembers) > 0 {
-		err := c.updateGroup()
-		if err != nil {
-			klog.Errorf("failed to update query group: %+v", err)
-		}
-	} else {
-		klog.Infof("no member in query group: %+v", c.queryGroupStatus.localMembers)
-	}
-	return true
+	return ruleIDs, nil
 }
 
 func (c *multicastController) addGroupAddressForTableIDs(ruleID string, priority *uint16, mcastGroupAddresses []string) {
-	c.mcastItemMutex.Lock()
-	defer c.mcastItemMutex.Unlock()
-	c.ruleIDGroupMapMutex.Lock()
-	defer c.ruleIDGroupMapMutex.Unlock()
-	mcastGroupAddressSet := sets.String{}
-	for _, mcastGroupAddress := range mcastGroupAddresses {
-		item, exists := c.mcastItemRuleIDMap[mcastGroupAddress]
-		ip, cidr, err := net.ParseCIDR(mcastGroupAddress)
-		if err != nil {
-			ip = net.ParseIP(mcastGroupAddress)
-			cidr = &net.IPNet{}
-			cidr.IP = ip
-			cidr.Mask = net.CIDRMask(32, 32)
-		}
-		mcastGroupAddressSet.Insert(mcastGroupAddress)
-		if !exists {
-			item := mcastItem{
-				groupAddress: *cidr,
-				ruleIDs:      make(map[string]*uint16),
-			}
-			item.ruleIDs[ruleID] = priority
-			c.mcastItemRuleIDMap[mcastGroupAddress] = item
-		} else {
-			item.ruleIDs[ruleID] = priority
-			c.mcastItemRuleIDMap[mcastGroupAddress] = item
-		}
+	igmpRule := &mcastIGMPRule{
+		ruleID:       ruleID,
+		priority:     priority,
+		groupAddress: mcastGroupAddresses,
+		event:        ruleAdd,
 	}
-	if mcastGroupAddressSet.Len() > 0 {
-		fmt.Println(mcastGroupAddressSet)
-		c.ruleIDGroupAddressMap[ruleID] = mcastGroupAddressSet
-	}
-	g := mcastGroupEvent{
-		eType: rulechanged,
-	}
-	c.eventCh <- g
+	c.queue.Add(igmpRule)
 }
 
 func (c *multicastController) updateGroupAddressForTableIDs(ruleID string, priority *uint16, mcastGroupAddresses []string) {
-	c.mcastItemMutex.Lock()
-	defer c.mcastItemMutex.Unlock()
-
-	c.ruleIDGroupMapMutex.Lock()
-	defer c.ruleIDGroupMapMutex.Unlock()
-
-	staleMcastGroupAddresses, ok := c.ruleIDGroupAddressMap[ruleID]
-	for _, mcastGroupAddress := range mcastGroupAddresses {
-		item, exists := c.mcastItemRuleIDMap[mcastGroupAddress]
-		ip, cidr, err := net.ParseCIDR(mcastGroupAddress)
-		if err != nil {
-			ip = net.ParseIP(mcastGroupAddress)
-			cidr = &net.IPNet{}
-			cidr.IP = ip
-			cidr.Mask = net.CIDRMask(32, 32)
-		}
-		if !exists {
-			item := mcastItem{
-				groupAddress: *cidr,
-				ruleIDs:      make(map[string]*uint16),
-			}
-			item.ruleIDs[ruleID] = priority
-			c.mcastItemRuleIDMap[mcastGroupAddress] = item
-		} else {
-			item.ruleIDs[ruleID] = priority
-			c.mcastItemRuleIDMap[mcastGroupAddress] = item
-		}
+	igmpRule := &mcastIGMPRule{
+		ruleID:       ruleID,
+		priority:     priority,
+		groupAddress: mcastGroupAddresses,
+		event:        ruleUpdate,
 	}
-	if !ok {
-		staleMcastGroupAddresses = sets.String{}
-	}
-	for staleGroupAddress := range staleMcastGroupAddresses {
-		if item, ok := c.mcastItemRuleIDMap[staleGroupAddress]; ok {
-			if _, ok = item.ruleIDs[ruleID]; ok {
-				delete(item.ruleIDs, ruleID)
-				if len(item.ruleIDs) > 0 {
-					c.mcastItemRuleIDMap[staleGroupAddress] = item
-				} else {
-					c.cleanupGroupAddressForTableIDsUnlocked(staleGroupAddress)
-				}
-			}
-		}
-	}
-
-	newMcastGroupAddresses := sets.String{}
-	for _, mcastGroupAddress := range mcastGroupAddresses {
-		newMcastGroupAddresses.Insert(mcastGroupAddress)
-	}
-	c.ruleIDGroupAddressMap[ruleID] = newMcastGroupAddresses
-	g := mcastGroupEvent{
-		eType: rulechanged,
-	}
-	c.eventCh <- g
+	c.queue.Add(igmpRule)
 }
 
 func (c *multicastController) deleteGroupAddressForTableIDs(ruleID string, groupAddresses []string) {
-	c.mcastItemMutex.Lock()
-	defer c.mcastItemMutex.Unlock()
-	c.ruleIDGroupMapMutex.Lock()
-	defer c.ruleIDGroupMapMutex.Unlock()
-	for _, groupAddress := range groupAddresses {
-		item, exists := c.mcastItemRuleIDMap[groupAddress]
-		klog.V(2).Infof("deleteGroupAddressForTableIDs groupAddress: %v, exist %v, map %+v %+v",
-			groupAddress, exists, c.mcastItemRuleIDMap, item)
-		if _, ok := item.ruleIDs[ruleID]; exists && ok {
-			delete(item.ruleIDs, ruleID)
-			if len(item.ruleIDs) > 0 {
-				c.mcastItemRuleIDMap[groupAddress] = item
-			} else {
-				c.cleanupGroupAddressForTableIDsUnlocked(groupAddress)
-			}
-		}
-		klog.V(2).Infof("after deleteGroupAddressForTableIDs groupAddress: %v, exist %v, map %+v %+v",
-			groupAddress, exists, c.mcastItemRuleIDMap, item)
+	igmpRule := &mcastIGMPRule{
+		ruleID:       ruleID,
+		groupAddress: groupAddresses,
+		event:        ruleDelete,
 	}
-
-	delete(c.ruleIDGroupAddressMap, ruleID)
-	g := mcastGroupEvent{
-		eType: rulechanged,
-	}
-	c.eventCh <- g
+	c.queue.Add(igmpRule)
 }
 
-// cleanupFQDNSelectorItem handles a fqdnSelectorItem delete event.
-func (c *multicastController) cleanupGroupAddressForTableIDsUnlocked(groupAddress string) {
-	_, exists := c.mcastItemRuleIDMap[groupAddress]
-	if exists {
-		delete(c.mcastItemRuleIDMap, groupAddress)
-	}
-}
+func (c *multicastController) validate(iface *interfacestore.InterfaceConfig,
+	groupAddress net.IP, direction crdv1beta.Direction) (*v1alpha1.RuleAction, apitypes.UID, *crdv1beta.NetworkPolicyType, string, error) {
 
-func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
-	groupAddress net.IPNet, direction crdv1beta.Direction) (*v1alpha1.RuleAction, apitypes.UID, *crdv1beta.NetworkPolicyType, string, error) {
 	var ruleTypePtr *crdv1beta.NetworkPolicyType
-	action, uuid, ruleName := v1alpha1.RuleActionAllow, apitypes.UID("0"), ""
+	action, uuid, ruleName := v1alpha1.RuleActionAllow, apitypes.UID(""), ""
 	if iface == nil {
-		//check the whole group
-		klog.Info("Iface should not be empty")
-		return nil, apitypes.UID(""), nil, "", fmt.Errorf("iface should not be empty")
+		// check the if iface exists
+		klog.ErrorS(fmt.Errorf("iface should not be empty"), "")
+		return nil, "", nil, "", fmt.Errorf("iface should not be empty")
 	}
 	ns, podname := iface.PodNamespace, iface.PodName
-	c.mcastItemMutex.Lock()
-	defer c.mcastItemMutex.Unlock()
-	item, exists := c.mcastItemRuleIDMap[groupAddress.String()]
+	obj, exists, _ := c.mcastItemRuleCache.GetByKey(groupAddress.String())
 	if !exists {
-		item, exists = c.mcastItemRuleIDMap[groupAddress.IP.String()]
-		if !exists {
-			klog.V(2).Infof("rule for group %s does not exist: %+v", groupAddress.String(), c.mcastItemRuleIDMap)
-			action = v1alpha1.RuleActionAllow
-			return &action, apitypes.UID(""), nil, "", nil
-		}
+		klog.V(2).InfoS("Rule for group does not exist", "group", groupAddress.String())
+		action = v1alpha1.RuleActionAllow
+		return &action, "", nil, "", nil
 	}
+	item := obj.(*mcastItem)
 	var matchedRule *CompletedRule
+	member := &crdv1beta.GroupMember{
+		Pod: &crdv1beta.PodReference{
+			Name:      podname,
+			Namespace: ns,
+		},
+	}
 	for ruleID := range item.ruleIDs {
-		rule, _, _ := c.ruleCache.GetCompletedRule(ruleID)
-		member := &crdv1beta.GroupMember{
-			Pod: &crdv1beta.PodReference{
-				Name:      podname,
-				Namespace: ns,
-			},
-		}
-
-		if (matchedRule == nil) || *(item.ruleIDs[ruleID]) > *(item.ruleIDs[matchedRule.ID]) {
-			if rule.Direction == crdv1beta.DirectionIn && direction == rule.Direction {
-				if rule.TargetMembers.Has(member) == true {
-					matchedRule = rule
-				}
-			} else if rule.Direction == crdv1beta.DirectionOut && direction == rule.Direction {
-				if rule.TargetMembers.Has(member) == true {
-					matchedRule = rule
-				}
+		//iterate all rules relate to this multicast group address
+		r, _, _ := c.ruleCache.GetCompletedRule(ruleID)
+		// find the rule with highest priority
+		if direction == r.Direction && r.TargetMembers.Has(member) == true {
+			if (matchedRule == nil) || *(item.ruleIDs[ruleID]) > *(item.ruleIDs[matchedRule.ID]) {
+				matchedRule = r
 			}
 		}
 	}
@@ -404,75 +159,176 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 		ruleTypePtr = new(crdv1beta.NetworkPolicyType)
 		action, uuid, *ruleTypePtr, ruleName = *matchedRule.Action, matchedRule.PolicyUID, matchedRule.SourceRef.Type, matchedRule.Name
 	} else {
-		action, uuid, ruleName = v1alpha1.RuleActionAllow, apitypes.UID(""), ""
+		action, uuid, ruleName = v1alpha1.RuleActionAllow, "", ""
 	}
-	klog.V(4).Infof("validation: action %v, uuid %v, ruleName %v, ruleType %v",
-		action, uuid, ruleName, ruleTypePtr)
+	klog.V(2).InfoS("call validation:", "action", action, "uuid", uuid, "ruleName", ruleName, "ruleType", ruleTypePtr)
 	return &action, uuid, ruleTypePtr, ruleName, nil
 }
 
-func (c *multicastController) run(stopCh <-chan struct{}) {
-	go c.syncQueryGroup(stopCh)
-}
-
-func (c *multicastController) memberChanged(e interface{}) {
-	podEvent := e.(types.PodUpdate)
-	namespace, name := podEvent.PodNamespace, podEvent.PodName
-	containerID := podEvent.ContainerID
-	interfaceName := util.GenerateContainerInterfaceName(name, namespace, containerID)
-	iface, ok := c.ifaceStore.GetInterfaceByName(interfaceName)
-	klog.Infof("memberChanged: %+v", podEvent.IsAdd)
-	if podEvent.IsAdd {
-		if ok {
-			g := mcastGroupEvent{
-				eType: groupJoin,
-				iface: iface,
-			}
-			c.eventCh <- g
-		}
-	} else {
-		if ok {
-			g := mcastGroupEvent{
-				eType: groupLeave,
-				iface: iface,
-			}
-			c.eventCh <- g
-		}
+func (c *multicastController) worker() {
+	for c.processNextWorkItem() {
 	}
 }
 
-func NewMulticastNetworkPolicyController(ofClient openflow.Client,
+func (c *multicastController) processNextWorkItem() bool {
+	obj, quit := c.queue.Get()
+	if quit {
+		return false
+	}
+	defer c.queue.Done(obj)
+
+	// We expect igmpRule to come off the workqueue.
+	if item, ok := obj.(*mcastIGMPRule); !ok {
+		// As the item in the workqueue is actually invalid, we call Forget here else we'd
+		// go into a loop of attempting to process a work item that is invalid.
+		// This should not happen.
+		c.queue.Forget(obj)
+		klog.Errorf("Expected string in work queue but got %#v", obj)
+		return true
+	} else if err := c.syncIGMPRule(item); err == nil {
+		// If no error occurs we Forget this item, it does not get queued again until
+		// another change happens.
+		c.queue.Forget(item)
+	} else {
+		// Put the item back on the workqueue to handle any transient errors.
+		c.queue.AddRateLimited(item)
+		klog.Errorf("Error syncing multicast rule %+v, requeuing. Error: %v", item, err)
+	}
+	return true
+}
+
+func (c *multicastController) syncIGMPRule(igmpRule *mcastIGMPRule) error {
+	c.ruleIDGroupMapMutex.Lock()
+	defer c.ruleIDGroupMapMutex.Unlock()
+	var item *mcastItem
+	switch igmpRule.event {
+	case ruleAdd:
+		klog.V(2).InfoS("add rule", "igmpRule", igmpRule)
+		memberList := sets.String{}
+		for _, group := range igmpRule.groupAddress {
+			item = &mcastItem{
+				groupAddress: ip.IPv4StrToIPNet(group),
+				ruleIDs:      make(map[string]*uint16),
+			}
+			memberList.Insert(group)
+			obj, exists, _ := c.mcastItemRuleCache.GetByKey(group)
+			if exists {
+				//group exists
+				itemOrig := obj.(*mcastItem)
+				item.groupAddress = itemOrig.groupAddress
+				for ruleID, priority := range itemOrig.ruleIDs {
+					item.ruleIDs[ruleID] = priority
+				}
+			}
+			item.ruleIDs[igmpRule.ruleID] = igmpRule.priority
+
+			c.mcastItemRuleCache.Add(item)
+		}
+		c.ruleIDGroupAddressMap[igmpRule.ruleID] = memberList
+	case ruleUpdate:
+		klog.V(2).InfoS("update rule", "igmpRule", igmpRule)
+		groupAddresses, _ := c.ruleIDGroupAddressMap[igmpRule.ruleID]
+		//rule changed
+		members := sets.String{}
+		for _, groupAddress := range igmpRule.groupAddress {
+			members.Insert(groupAddress)
+			item = &mcastItem{
+				groupAddress: ip.IPv4StrToIPNet(groupAddress),
+				ruleIDs:      make(map[string]*uint16),
+			}
+			if groupAddresses.Has(groupAddress) {
+				//just update
+				obj, exists, _ := c.mcastItemRuleCache.GetByKey(groupAddress)
+				if exists {
+					itemOrig := obj.(*mcastItem)
+					item.groupAddress = itemOrig.groupAddress
+					for ruleID, priority := range itemOrig.ruleIDs {
+						item.ruleIDs[ruleID] = priority
+					}
+				}
+			}
+			item.ruleIDs[igmpRule.ruleID] = igmpRule.priority
+			c.mcastItemRuleCache.Add(item)
+		}
+		for groupAddress := range groupAddresses {
+			if !members.Has(groupAddress) {
+				//remove
+				obj, exists, _ := c.mcastItemRuleCache.GetByKey(groupAddress)
+				if exists {
+					item = &mcastItem{
+						groupAddress: ip.IPv4StrToIPNet(groupAddress),
+						ruleIDs:      make(map[string]*uint16),
+					}
+					itemOrig := obj.(*mcastItem)
+					for ruleID, priority := range itemOrig.ruleIDs {
+						if ruleID != igmpRule.ruleID {
+							item.ruleIDs[ruleID] = priority
+						}
+					}
+					if len(item.ruleIDs) == 0 {
+						c.mcastItemRuleCache.Delete(itemOrig)
+					} else {
+						c.mcastItemRuleCache.Add(item)
+					}
+				}
+			}
+		}
+		c.ruleIDGroupAddressMap[igmpRule.ruleID] = members
+	case ruleDelete:
+		//remove from cache
+		klog.V(2).InfoS("delete rule", "igmpRule", igmpRule)
+		memberList := c.ruleIDGroupAddressMap[igmpRule.ruleID]
+		for member := range memberList {
+			obj, exists, _ := c.mcastItemRuleCache.GetByKey(member)
+			item = &mcastItem{
+				groupAddress: ip.IPv4StrToIPNet(member),
+				ruleIDs:      make(map[string]*uint16),
+			}
+			if exists {
+				itemOrig := obj.(*mcastItem)
+				for ruleID := range itemOrig.ruleIDs {
+					if ruleID != igmpRule.ruleID {
+						item.ruleIDs[ruleID] = itemOrig.ruleIDs[ruleID]
+					}
+				}
+				if len(item.ruleIDs) == 0 {
+					c.mcastItemRuleCache.Delete(itemOrig)
+				} else {
+					c.mcastItemRuleCache.Add(item)
+				}
+			}
+		}
+		delete(c.ruleIDGroupAddressMap, igmpRule.ruleID)
+	}
+	return nil
+}
+
+func newMulticastNetworkPolicyController(ofClient openflow.Client,
 	ifaceStore interfacestore.InterfaceStore,
-	podUpdateSubscriber channel.Subscriber,
-	queryGroupID binding.GroupIDType) (*multicastController, error) {
+	ruleCache *ruleCache) (*multicastController, error) {
+	mcastItemRuleCache := cache.NewIndexer(groupAddressKey, cache.Indexers{
+		groupAddressIndex: groupAddressRuleIndexFunc,
+	})
 	mcastController := &multicastController{
 		ofClient:              ofClient,
 		ifaceStore:            ifaceStore,
-		groupInstalled:        false,
-		mcastItemRuleIDMap:    make(map[string]mcastItem),
+		ruleCache:             ruleCache,
+		queue:                 workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "igmpRule"),
+		mcastItemRuleCache:    mcastItemRuleCache,
 		ruleIDGroupAddressMap: make(map[string]sets.String),
-		queryGroupId:          queryGroupID,
-		eventCh:               make(chan mcastGroupEvent),
-	}
-	klog.Infof("podUpdateSubscriber.Subscribe(mcastController.memberChanged)")
-	if podUpdateSubscriber != nil {
-		podUpdateSubscriber.Subscribe(mcastController.memberChanged)
 	}
 	return mcastController, nil
 }
 
-func (m *multicastController) Validation(iface *interfacestore.InterfaceConfig, groupAddress net.IP) (interface{}, error) {
-	groupAddressCidr := net.IPNet{
-		IP:   groupAddress,
-		Mask: net.CIDRMask(32, 32),
-	}
+func (c *multicastController) Validate(obj interface{}, groupAddress net.IP) (interface{}, error) {
+	iface := obj.(*interfacestore.InterfaceConfig)
 
-	action, uuid, npType, name, err := m.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
-	ret := types.MulticastNPValidation{
-		action,
-		uuid,
-		npType,
-		name,
+	action, uuid, npType, name, err := c.validate(iface, groupAddress, crdv1beta.DirectionOut)
+	ret := types.McastNPValidationItem{
+		RuleAction: action,
+		Uuid:       uuid,
+		NPType:     npType,
+		Name:       name,
 	}
 	if err != nil {
 		return nil, err

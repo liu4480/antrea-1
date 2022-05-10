@@ -26,15 +26,15 @@ import (
 )
 
 var _, mcastCIDR, _ = net.ParseCIDR("224.0.0.0/4")
-var mcastAllHosts = net.ParseIP("224.0.0.1").To4()
 
 type featureMulticast struct {
 	cookieAllocator cookie.Allocator
 	ipProtocols     []binding.Protocol
 	bridge          binding.Bridge
 
-	cachedFlows *flowCategoryCache
-	groupCache  sync.Map
+	cachedFlows        *flowCategoryCache
+	groupCache         sync.Map
+	enableAntreaPolicy bool
 
 	category cookie.Category
 }
@@ -43,14 +43,15 @@ func (f *featureMulticast) getFeatureName() string {
 	return "Multicast"
 }
 
-func newFeatureMulticast(cookieAllocator cookie.Allocator, ipProtocols []binding.Protocol, bridge binding.Bridge) *featureMulticast {
+func newFeatureMulticast(cookieAllocator cookie.Allocator, ipProtocols []binding.Protocol, bridge binding.Bridge, anpEnabled bool) *featureMulticast {
 	return &featureMulticast{
-		cookieAllocator: cookieAllocator,
-		ipProtocols:     ipProtocols,
-		cachedFlows:     newFlowCategoryCache(),
-		bridge:          bridge,
-		category:        cookie.Multicast,
-		groupCache:      sync.Map{},
+		cookieAllocator:    cookieAllocator,
+		ipProtocols:        ipProtocols,
+		cachedFlows:        newFlowCategoryCache(),
+		bridge:             bridge,
+		category:           cookie.Multicast,
+		groupCache:         sync.Map{},
+		enableAntreaPolicy: anpEnabled,
 	}
 }
 
@@ -76,27 +77,21 @@ func (f *featureMulticast) replayFlows() []binding.Flow {
 	return getCachedFlows(f.cachedFlows)
 }
 
-func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, blockedPorts map[uint32]bool,
-	querygroup bool, ports ...uint32) error {
-	table := MulticastIGMPIngressTable
+func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, ports ...uint32) error {
+	table := MulticastOutputTable
+	if f.enableAntreaPolicy {
+		table = MulticastIGMPIngressTable
+	}
 	group := f.bridge.CreateGroupTypeAll(groupID).ResetBuckets()
-	ok := false
 	for i := range ports {
-		if blockedPorts != nil {
-			_, ok = blockedPorts[ports[i]]
-		}
-		bktBuilder := group.Bucket()
-		if ok && querygroup {
-			bktBuilder = bktBuilder.LoadToRegField(McastDropByNPRegMark.GetField(), 1)
-		}
-		group = bktBuilder.
+		group = group.Bucket().
 			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
 			LoadToRegField(TargetOFPortField, ports[i]).
-			ResubmitToTable(table.GetNext()).
+			ResubmitToTable(table.GetID()).
 			Done()
 	}
 	if err := group.Add(); err != nil {
-		return fmt.Errorf("error when installing Multicast receiver Group: %w", err)
+		return fmt.Errorf("error when installing Multicast query Group: %w", err)
 	}
 	f.groupCache.Store(groupID, group)
 	return nil
@@ -108,7 +103,7 @@ func (f *featureMulticast) multicastReceiversGroup(groupID binding.GroupIDType, 
 		group = group.Bucket().
 			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
 			LoadToRegField(TargetOFPortField, ports[i]).
-			ResubmitToTable(MulticastRoutingTable.GetNext()).
+			ResubmitToTable(MulticastOutputTable.GetID()).
 			Done()
 	}
 	if err := group.Add(); err != nil {

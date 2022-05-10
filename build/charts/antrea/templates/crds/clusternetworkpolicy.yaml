@@ -230,7 +230,6 @@ spec:
                               properties:
                                 igmpType:
                                   type: integer
-                                  enum: [ 17, 18, 22, 34 ]
                                 groupAddress:
                                   type: string
                                   oneOf:
@@ -455,7 +454,6 @@ spec:
                               properties:
                                 igmpType:
                                   type: integer
-                                  enum: [17, 18, 22, 34]
                                 groupAddress:
                                   type: string
                                   oneOf:
