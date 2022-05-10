@@ -58,8 +58,9 @@ func newTestController() (*Controller, *fake.Clientset, *mockReconciler) {
 	ch2 := make(chan string, 100)
 	groupIDAllocator := openflow.NewGroupAllocator(false)
 	groupCounters := []proxytypes.GroupCounter{proxytypes.NewGroupCounter(groupIDAllocator, ch2)}
+	mcastController, _ := NewMulticastNetworkPolicyController(nil, nil, podUpdateChannel, groupIDAllocator.Allocate())
 	controller, _ := NewNetworkPolicyController(&antreaClientGetter{clientset}, nil, nil, "node1", podUpdateChannel, groupCounters, ch2,
-		true, true, true, true, true, testAsyncDeleteInterval, "8.8.8.8:53", true, false, )
+		mcastController, true, true, true, false, true, testAsyncDeleteInterval, "8.8.8.8:53", true, false, )
 	reconciler := newMockReconciler()
 	controller.reconciler = reconciler
 	controller.antreaPolicyLogger = nil

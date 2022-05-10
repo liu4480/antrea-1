@@ -27,9 +27,9 @@ const (
 	igmp      ruleType = 1
 	multicast ruleType = 2
 
-	groupJoin eventType = iota
-	groupLeave
-	rulechanged
+	groupJoin   eventType = 0
+	groupLeave  eventType = 1
+	rulechanged eventType = 2
 )
 
 var (
@@ -199,6 +199,9 @@ func (c *multicastController) updateGroup() error {
 }
 
 func (c *multicastController) initialize(cache *ruleCache) bool {
+	if cache == nil {
+		return false
+	}
 	c.ruleCache = cache
 	c.queryGroupStatus = GroupMemberStatus{
 		group: mcastAllHosts,
@@ -252,6 +255,7 @@ func (c *multicastController) addGroupAddressForTableIDs (ruleID string, priorit
 		}
 	}
 	if mcastGroupAddressSet.Len() > 0 {
+		fmt.Println(mcastGroupAddressSet)
 		c.ruleIDGroupAddressMap[ruleID] = mcastGroupAddressSet
 	}
 	g := mcastGroupEvent{
@@ -448,7 +452,9 @@ func NewMulticastNetworkPolicyController(ofClient openflow.Client,
 		eventCh: make(chan mcastGroupEvent),
 	}
 	klog.Infof("podUpdateSubscriber.Subscribe(mcastController.memberChanged)")
-	podUpdateSubscriber.Subscribe(mcastController.memberChanged)
+	if podUpdateSubscriber != nil {
+		podUpdateSubscriber.Subscribe(mcastController.memberChanged)
+	}
 	return mcastController, nil
 }
 
