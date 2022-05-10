@@ -111,7 +111,7 @@ func (s *IGMPSnooper) queryIGMP(group net.IP, versions []uint8) error {
 		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, mcastAllHosts, outPort, igmp); err != nil {
 			return err
 		}
-		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version, "outPort",outPort)
+		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version, "outPort", outPort)
 	}
 	return nil
 }

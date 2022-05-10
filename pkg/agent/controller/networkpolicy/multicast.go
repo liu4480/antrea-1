@@ -22,6 +22,7 @@ import (
 
 type ruleType int
 type eventType uint8
+
 const (
 	unicast   ruleType = 0
 	igmp      ruleType = 1
@@ -33,13 +34,13 @@ const (
 )
 
 var (
-	mcastAllHosts      = net.ParseIP("224.0.0.1").To4()
-	_, mcastAllHostsCIDR, _  = net.ParseCIDR("224.0.0.1/32")
+	mcastAllHosts           = net.ParseIP("224.0.0.1").To4()
+	_, mcastAllHostsCIDR, _ = net.ParseCIDR("224.0.0.1/32")
 )
 
 type mcastItem struct {
 	groupAddress net.IPNet
-	ruleIDs map[string]*uint16
+	ruleIDs      map[string]*uint16
 }
 
 type GroupMemberStatus struct {
@@ -58,26 +59,26 @@ type mcastGroupEvent struct {
 }
 
 type multicastController struct {
-	ofClient     openflow.Client
+	ofClient openflow.Client
 
-	ifaceStore  interfacestore.InterfaceStore
+	ifaceStore interfacestore.InterfaceStore
 
-	queryGroupId         binding.GroupIDType
-	groupInstalled       bool
-	queryGroupStatus     GroupMemberStatus
+	queryGroupId     binding.GroupIDType
+	groupInstalled   bool
+	queryGroupStatus GroupMemberStatus
 
-	ruleCache            *ruleCache
-	mcastItemRuleIDMap   map[string]mcastItem
-	mcastItemMutex       sync.RWMutex
+	ruleCache             *ruleCache
+	mcastItemRuleIDMap    map[string]mcastItem
+	mcastItemMutex        sync.RWMutex
 	ruleIDGroupAddressMap map[string]sets.String
-	ruleIDGroupMapMutex sync.RWMutex
-	eventCh             chan mcastGroupEvent
+	ruleIDGroupMapMutex   sync.RWMutex
+	eventCh               chan mcastGroupEvent
 }
 
-func (c *multicastController) syncQueryGroup(stopCh <- chan struct{}) {
-	for  {
-		select  {
-		case event := <- c.eventCh:
+func (c *multicastController) syncQueryGroup(stopCh <-chan struct{}) {
+	for {
+		select {
+		case event := <-c.eventCh:
 			klog.Info("resync query group")
 			if c.queryGroupId == 0 {
 				klog.Infof("c.queryGroupId == 0 %v", c.queryGroupId == 0)
@@ -204,10 +205,10 @@ func (c *multicastController) initialize(cache *ruleCache) bool {
 	}
 	c.ruleCache = cache
 	c.queryGroupStatus = GroupMemberStatus{
-		group: mcastAllHosts,
-		localMembers: make(map[string]time.Time),
+		group:          mcastAllHosts,
+		localMembers:   make(map[string]time.Time),
 		lastIGMPReport: time.Now(),
-		ofGroupID: c.queryGroupId,
+		ofGroupID:      c.queryGroupId,
 	}
 	now := time.Now()
 	ifaces := c.ifaceStore.GetInterfacesByType(interfacestore.ContainerInterface)
@@ -226,7 +227,7 @@ func (c *multicastController) initialize(cache *ruleCache) bool {
 	return true
 }
 
-func (c *multicastController) addGroupAddressForTableIDs (ruleID string, priority *uint16, mcastGroupAddresses []string) {
+func (c *multicastController) addGroupAddressForTableIDs(ruleID string, priority *uint16, mcastGroupAddresses []string) {
 	c.mcastItemMutex.Lock()
 	defer c.mcastItemMutex.Unlock()
 	c.ruleIDGroupMapMutex.Lock()
@@ -245,7 +246,7 @@ func (c *multicastController) addGroupAddressForTableIDs (ruleID string, priorit
 		if !exists {
 			item := mcastItem{
 				groupAddress: *cidr,
-				ruleIDs: make(map[string]*uint16),
+				ruleIDs:      make(map[string]*uint16),
 			}
 			item.ruleIDs[ruleID] = priority
 			c.mcastItemRuleIDMap[mcastGroupAddress] = item
@@ -264,7 +265,7 @@ func (c *multicastController) addGroupAddressForTableIDs (ruleID string, priorit
 	c.eventCh <- g
 }
 
-func (c *multicastController) updateGroupAddressForTableIDs (ruleID string, priority *uint16, mcastGroupAddresses []string) {
+func (c *multicastController) updateGroupAddressForTableIDs(ruleID string, priority *uint16, mcastGroupAddresses []string) {
 	c.mcastItemMutex.Lock()
 	defer c.mcastItemMutex.Unlock()
 
@@ -284,7 +285,7 @@ func (c *multicastController) updateGroupAddressForTableIDs (ruleID string, prio
 		if !exists {
 			item := mcastItem{
 				groupAddress: *cidr,
-				ruleIDs: make(map[string]*uint16),
+				ruleIDs:      make(map[string]*uint16),
 			}
 			item.ruleIDs[ruleID] = priority
 			c.mcastItemRuleIDMap[mcastGroupAddress] = item
@@ -320,7 +321,7 @@ func (c *multicastController) updateGroupAddressForTableIDs (ruleID string, prio
 	c.eventCh <- g
 }
 
-func (c *multicastController) deleteGroupAddressForTableIDs (ruleID string, groupAddresses []string) {
+func (c *multicastController) deleteGroupAddressForTableIDs(ruleID string, groupAddresses []string) {
 	c.mcastItemMutex.Lock()
 	defer c.mcastItemMutex.Unlock()
 	c.ruleIDGroupMapMutex.Lock()
@@ -349,7 +350,7 @@ func (c *multicastController) deleteGroupAddressForTableIDs (ruleID string, grou
 }
 
 // cleanupFQDNSelectorItem handles a fqdnSelectorItem delete event.
-func (c *multicastController) cleanupGroupAddressForTableIDsUnlocked (groupAddress string) {
+func (c *multicastController) cleanupGroupAddressForTableIDsUnlocked(groupAddress string) {
 	_, exists := c.mcastItemRuleIDMap[groupAddress]
 	if exists {
 		delete(c.mcastItemRuleIDMap, groupAddress)
@@ -358,7 +359,8 @@ func (c *multicastController) cleanupGroupAddressForTableIDsUnlocked (groupAddre
 
 func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 	groupAddress net.IPNet, direction crdv1beta.Direction) (*v1alpha1.RuleAction, apitypes.UID, *crdv1beta.NetworkPolicyType, string, error) {
-	action, uuid, ruleType, ruleName := v1alpha1.RuleActionDrop, apitypes.UID("0"), crdv1beta.NetworkPolicyType(""),""
+	var ruleTypePtr *crdv1beta.NetworkPolicyType
+	action, uuid, ruleName := v1alpha1.RuleActionAllow, apitypes.UID("0"), ""
 	if iface == nil {
 		//check the whole group
 		klog.Info("Iface should not be empty")
@@ -380,18 +382,18 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 	for ruleID := range item.ruleIDs {
 		rule, _, _ := c.ruleCache.GetCompletedRule(ruleID)
 		member := &crdv1beta.GroupMember{
-			Pod: &crdv1beta.PodReference {
-				Name: podname,
+			Pod: &crdv1beta.PodReference{
+				Name:      podname,
 				Namespace: ns,
 			},
 		}
 
 		if (matchedRule == nil) || *(item.ruleIDs[ruleID]) > *(item.ruleIDs[matchedRule.ID]) {
-			if rule.Direction == crdv1beta.DirectionIn && direction == rule.Direction{
+			if rule.Direction == crdv1beta.DirectionIn && direction == rule.Direction {
 				if rule.TargetMembers.Has(member) == true {
 					matchedRule = rule
 				}
-			} else if rule.Direction == crdv1beta.DirectionOut && direction == rule.Direction{
+			} else if rule.Direction == crdv1beta.DirectionOut && direction == rule.Direction {
 				if rule.TargetMembers.Has(member) == true {
 					matchedRule = rule
 				}
@@ -399,16 +401,17 @@ func (c *multicastController) validation(iface *interfacestore.InterfaceConfig,
 		}
 	}
 	if matchedRule != nil {
-		action, uuid, ruleType,ruleName = *matchedRule.Action, matchedRule.PolicyUID,matchedRule.SourceRef.Type,  matchedRule.Name
+		ruleTypePtr = new(crdv1beta.NetworkPolicyType)
+		action, uuid, *ruleTypePtr, ruleName = *matchedRule.Action, matchedRule.PolicyUID, matchedRule.SourceRef.Type, matchedRule.Name
 	} else {
 		action, uuid, ruleName = v1alpha1.RuleActionAllow, apitypes.UID(""), ""
 	}
-	klog.V(4).Infof("validation: action %v, uuid %v, ruleName %v, found %v",
-		action, uuid, ruleName)
-	return &action, uuid, &ruleType, ruleName, nil
+	klog.V(4).Infof("validation: action %v, uuid %v, ruleName %v, ruleType %v",
+		action, uuid, ruleName, ruleTypePtr)
+	return &action, uuid, ruleTypePtr, ruleName, nil
 }
 
-func (c *multicastController) run(stopCh <- chan struct{}) {
+func (c *multicastController) run(stopCh <-chan struct{}) {
 	go c.syncQueryGroup(stopCh)
 }
 
@@ -439,17 +442,17 @@ func (c *multicastController) memberChanged(e interface{}) {
 }
 
 func NewMulticastNetworkPolicyController(ofClient openflow.Client,
-							ifaceStore interfacestore.InterfaceStore,
-							podUpdateSubscriber channel.Subscriber,
-							queryGroupID binding.GroupIDType) (*multicastController, error) {
+	ifaceStore interfacestore.InterfaceStore,
+	podUpdateSubscriber channel.Subscriber,
+	queryGroupID binding.GroupIDType) (*multicastController, error) {
 	mcastController := &multicastController{
-		ofClient: ofClient,
-		ifaceStore: ifaceStore,
-		groupInstalled: false,
-		mcastItemRuleIDMap: make(map[string]mcastItem),
+		ofClient:              ofClient,
+		ifaceStore:            ifaceStore,
+		groupInstalled:        false,
+		mcastItemRuleIDMap:    make(map[string]mcastItem),
 		ruleIDGroupAddressMap: make(map[string]sets.String),
-		queryGroupId: queryGroupID,
-		eventCh: make(chan mcastGroupEvent),
+		queryGroupId:          queryGroupID,
+		eventCh:               make(chan mcastGroupEvent),
 	}
 	klog.Infof("podUpdateSubscriber.Subscribe(mcastController.memberChanged)")
 	if podUpdateSubscriber != nil {
@@ -458,14 +461,14 @@ func NewMulticastNetworkPolicyController(ofClient openflow.Client,
 	return mcastController, nil
 }
 
-func (m *multicastController) Validation (iface *interfacestore.InterfaceConfig, groupAddress net.IP) (interface{}, error) {
+func (m *multicastController) Validation(iface *interfacestore.InterfaceConfig, groupAddress net.IP) (interface{}, error) {
 	groupAddressCidr := net.IPNet{
-		IP: groupAddress,
-		Mask: net.CIDRMask(32,32),
+		IP:   groupAddress,
+		Mask: net.CIDRMask(32, 32),
 	}
 
 	action, uuid, npType, name, err := m.validation(iface, groupAddressCidr, crdv1beta.DirectionOut)
-	ret := types.MulticastNPValidation {
+	ret := types.MulticastNPValidation{
 		action,
 		uuid,
 		npType,

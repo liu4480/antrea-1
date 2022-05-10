@@ -46,14 +46,14 @@ const (
 	// How long to wait before retrying the processing of a multicast group change.
 	minRetryDelay = 5 * time.Second
 	maxRetryDelay = 300 * time.Second
-	resyncPeriod = 0 * time.Minute
+	resyncPeriod  = 0 * time.Minute
 )
 
 var (
 	workerCount uint8 = 2
 	// Use IGMP v1, v2, and v3 query messages to snoop the multicast groups in which local Pods have joined.
 	queryVersions = []uint8{1, 2, 3}
-	igmpGroup binding.GroupIDType
+	igmpGroup     binding.GroupIDType
 )
 
 type mcastGroupEvent struct {

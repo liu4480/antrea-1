@@ -107,8 +107,8 @@ type Controller struct {
 	fullSyncGroup         sync.WaitGroup
 	ifaceStore            interfacestore.InterfaceStore
 	// denyConnStore is for storing deny connections for flow exporter.
-	denyConnStore *connections.DenyConnectionStore
-	mcastController       *multicastController
+	denyConnStore   *connections.DenyConnectionStore
+	mcastController *multicastController
 }
 
 // NewNetworkPolicyController returns a new *Controller.

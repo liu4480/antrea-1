@@ -294,7 +294,6 @@ type Client interface {
 	// UninstallTrafficControlReturnPortFlow removes the flow to classify the packets from a return port.
 	UninstallTrafficControlReturnPortFlow(returnOFPort uint32) error
 
-
 	InstallIGMPGroup(groupID binding.GroupIDType,
 		blockedPorts map[uint32]bool,
 		queryGroup bool,
@@ -1205,7 +1204,6 @@ func (c *client) InstallIGMPGroup(groupID binding.GroupIDType, blockedPorts map[
 	}
 	return nil
 }
-
 
 func (c *client) InstallMulticastGroup(groupID binding.GroupIDType, localReceivers []uint32) error {
 	c.replayMutex.RLock()

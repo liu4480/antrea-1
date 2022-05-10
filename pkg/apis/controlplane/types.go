@@ -294,8 +294,8 @@ type Service struct {
 	ICMPCode *int32
 
 	//IGMPType and GroupAddress can only be specified, when the Procotol is IGMP.
-	IGMPType       *int32
-	GroupAddress   *string
+	IGMPType     *int32
+	GroupAddress *string
 }
 
 // NetworkPolicyPeer describes a peer of NetworkPolicyRules.

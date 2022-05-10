@@ -660,7 +660,7 @@ func (v *antreaPolicyValidator) validateEgressMulticastAddress(egressRule []crdv
 func igmpValidation(protocol crdv1alpha1.NetworkPolicyProtocol) (string, bool) {
 	if protocol.IGMP.IGMPType == nil {
 		return fmt.Sprintf("IGMP type not set: %v, expected are: [IGMPQuery: %v IGMPReportV1: %v, IGMPReportV2: %v, IGMPReportV2:%v]",
-			*protocol.IGMP.IGMPType, crdv1alpha1.IGMPQuery, crdv1alpha1.IGMPReportV1, crdv1alpha1.IGMPReportV2,crdv1alpha1.IGMPReportV3), false
+			*protocol.IGMP.IGMPType, crdv1alpha1.IGMPQuery, crdv1alpha1.IGMPReportV1, crdv1alpha1.IGMPReportV2, crdv1alpha1.IGMPReportV3), false
 	}
 	if *protocol.IGMP.IGMPType == crdv1alpha1.IGMPQuery && protocol.IGMP.GroupAddress == nil {
 		groupAddress := "224.0.0.1"

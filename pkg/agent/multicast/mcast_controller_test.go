@@ -364,7 +364,7 @@ func newMockMulticastController(t *testing.T) *Controller {
 	mockOFClient.EXPECT().RegisterPacketInHandler(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
 	groupAllocator := openflow.NewGroupAllocator(false)
 	podUpdateSubscriber := channel.NewSubscribableChannel("PodUpdate", 100)
-	mctrl := NewMulticastController(mockOFClient, groupAllocator, nodeConfig, mockIfaceStore, mockMulticastSocket, sets.NewString(), ovsClient, podUpdateSubscriber,nil, false)
+	mctrl := NewMulticastController(mockOFClient, groupAllocator, nodeConfig, mockIfaceStore, mockMulticastSocket, sets.NewString(), ovsClient, podUpdateSubscriber, nil, false)
 	return mctrl
 }
 

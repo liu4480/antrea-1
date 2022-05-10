@@ -132,7 +132,7 @@ func run(o *Options) error {
 		features.DefaultFeatureGate.Enabled(features.FlowExporter),
 		o.config.AntreaProxy.ProxyAll,
 		connectUplinkToBridge,
-	    multicastEnabled,
+		multicastEnabled,
 		features.DefaultFeatureGate.Enabled(features.TrafficControl),
 	)
 

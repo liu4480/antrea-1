@@ -78,15 +78,13 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 	dropAction := crdv1alpha1.RuleActionDrop
 	protocolTCP := controlplane.ProtocolTCP
 	query := crdv1alpha1.IGMPQuery
-	report := crdv1alpha1.IGMPReport
-	queryStr := string(query)
-	reportStr := string(report)
+	report := crdv1alpha1.IGMPReportV1
 	selectorA := metav1.LabelSelector{MatchLabels: map[string]string{"foo1": "bar1"}}
 	selectorB := metav1.LabelSelector{MatchLabels: map[string]string{"foo2": "bar2"}}
 	selectorC := metav1.LabelSelector{MatchLabels: map[string]string{"foo3": "bar3"}}
 	selectorD := metav1.LabelSelector{MatchLabels: map[string]string{"internal.antrea.io/service-account": saA.Name}}
-	ipb, _ := toAntreaIPBlockForCRD(&crdv1alpha1.IPBlock{"224.0.0.1/32"})
-	ipb1,_ := toAntreaIPBlockForCRD(&crdv1alpha1.IPBlock{"225.1.2.3/32"})
+	queryAddr := "224.0.0.1/"
+	reportAddr := "225.1.2.3"
 	labelSelectorA, _ := metav1.LabelSelectorAsSelector(&selectorA)
 	labelSelectorB, _ := metav1.LabelSelectorAsSelector(&selectorB)
 	cgA := crdv1alpha3.ClusterGroup{
@@ -1272,13 +1270,11 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 					Ingress: []crdv1alpha1.Rule{
 						{
 							Action: &dropAction,
-							Protocols: []crdv1alpha1.NetworkPolicyProtocol {
+							Protocols: []crdv1alpha1.NetworkPolicyProtocol{
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
-										IGMPType: &query,
-										GroupAddress: &crdv1alpha1.IPBlock{
-											CIDR: "224.0.0.1/32",
-										},
+										IGMPType:     &query,
+										GroupAddress: &queryAddr,
 									},
 								},
 							},
@@ -1301,14 +1297,14 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 						Direction: controlplane.DirectionIn,
 						Services: []controlplane.Service{
 							{
-								Protocol: &protocolIGMP,
-								IGMPType: &queryStr,
-								GroupAddress: ipb,
+								Protocol:     &protocolIGMP,
+								IGMPType:     &query,
+								GroupAddress: &queryAddr,
 							},
 						},
 						Priority: 0,
 						Action:   &dropAction,
-						From: controlplane.NetworkPolicyPeer {
+						From: controlplane.NetworkPolicyPeer{
 							IPBlocks: []controlplane.IPBlock{
 								{CIDR: controlplane.IPNet{IP: controlplane.IPAddress(net.IPv4zero), PrefixLength: 0}},
 								{CIDR: controlplane.IPNet{IP: controlplane.IPAddress(net.IPv6zero), PrefixLength: 0}},
@@ -1333,13 +1329,11 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 					Egress: []crdv1alpha1.Rule{
 						{
 							Action: &dropAction,
-							Protocols: []crdv1alpha1.NetworkPolicyProtocol {
+							Protocols: []crdv1alpha1.NetworkPolicyProtocol{
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
 										IGMPType: &report,
-										GroupAddress: &crdv1alpha1.IPBlock{
-											CIDR: "225.1.2.3/32",
-										},
+										GroupAddress: &reportAddr,
 									},
 								},
 							},
@@ -1362,14 +1356,14 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 						Direction: controlplane.DirectionOut,
 						Services: []controlplane.Service{
 							{
-								Protocol: &protocolIGMP,
-								IGMPType: &reportStr,
-								GroupAddress: ipb1,
+								Protocol:     &protocolIGMP,
+								IGMPType:     &report,
+								GroupAddress: &reportAddr,
 							},
 						},
 						Priority: 0,
 						Action:   &dropAction,
-						To: controlplane.NetworkPolicyPeer {
+						To: controlplane.NetworkPolicyPeer{
 							IPBlocks: []controlplane.IPBlock{
 								{CIDR: controlplane.IPNet{IP: controlplane.IPAddress(net.IPv4zero), PrefixLength: 0}},
 								{CIDR: controlplane.IPNet{IP: controlplane.IPAddress(net.IPv6zero), PrefixLength: 0}},

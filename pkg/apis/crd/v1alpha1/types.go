@@ -490,7 +490,7 @@ type NetworkPolicyPort struct {
 
 // RuleAction describes the action to be applied on traffic matching a rule.
 type RuleAction string
-type IGMPKind   string
+type IGMPKind string
 
 const (
 	// RuleActionAllow describes that the traffic matching the rule must be allowed.
@@ -505,10 +505,10 @@ const (
 	// client will receive a response.
 	RuleActionReject RuleAction = "Reject"
 
-	IGMPQuery        int32 = 0x11
-	IGMPReportV1     int32 = 0x12
-	IGMPReportV2     int32 = 0x16
-	IGMPReportV3     int32 = 0x22
+	IGMPQuery    int32 = 0x11
+	IGMPReportV1 int32 = 0x12
+	IGMPReportV2 int32 = 0x16
+	IGMPReportV3 int32 = 0x22
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -630,6 +630,6 @@ type ICMPProtocol struct {
 
 type IGMPProtocol struct {
 	//add igmp type
-	IGMPType       *int32  `json:"igmpType"`
-	GroupAddress   *string `json:"groupAddress,omitempty"`
+	IGMPType     *int32  `json:"igmpType"`
+	GroupAddress *string `json:"groupAddress,omitempty"`
 }

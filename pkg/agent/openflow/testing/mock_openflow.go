@@ -305,7 +305,7 @@ func (m *MockClient) InstallIGMPGroup(arg0 openflow.GroupIDType, arg1 map[uint32
 }
 
 // InstallMulticastGroup mocks base method
-func (m *MockClient) InstallMulticastGroup(arg0 openflow.GroupIDType,arg1 []uint32) error {
+func (m *MockClient) InstallMulticastGroup(arg0 openflow.GroupIDType, arg1 []uint32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InstallMulticastGroup", arg0, arg1)
 	ret0, _ := ret[0].(error)

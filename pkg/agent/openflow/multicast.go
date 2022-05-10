@@ -26,7 +26,7 @@ import (
 )
 
 var _, mcastCIDR, _ = net.ParseCIDR("224.0.0.0/4")
-var mcastAllHosts   = net.ParseIP("224.0.0.1").To4()
+var mcastAllHosts = net.ParseIP("224.0.0.1").To4()
 
 type featureMulticast struct {
 	cookieAllocator cookie.Allocator
@@ -82,7 +82,7 @@ func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, blo
 	group := f.bridge.CreateGroupTypeAll(groupID).ResetBuckets()
 	ok := false
 	for i := range ports {
-		if  blockedPorts != nil {
+		if blockedPorts != nil {
 			_, ok = blockedPorts[ports[i]]
 		}
 		bktBuilder := group.Bucket()

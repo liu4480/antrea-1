@@ -50,15 +50,15 @@ func TestAddGroupAddressForTableIDs(t *testing.T) {
 			map[string]mcastItem{
 				"224.0.0.1": mcastItem{
 					groupAddress: net.IPNet{
-						IP: net.ParseIP("224.0.0.1"),
-						Mask: net.CIDRMask(32,32),
+						IP:   net.ParseIP("224.0.0.1"),
+						Mask: net.CIDRMask(32, 32),
 					},
 					ruleIDs: map[string]*uint16{
 						"queryRule01": &priority,
 					},
 				},
 			},
-			map[string]sets.String {
+			map[string]sets.String{
 				"queryRule01": sets.NewString("224.0.0.1"),
 			},
 		},
@@ -69,7 +69,7 @@ func TestAddGroupAddressForTableIDs(t *testing.T) {
 			defer controller.Finish()
 			m, _ := newMockMcastController(t, controller)
 			go func() {
-				event:= <-m.eventCh
+				event := <-m.eventCh
 				t.Logf("got event: %v", event.eType)
 			}()
 			if tt.mcastItemRuleIDMap != nil {
@@ -98,11 +98,11 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 	}{
 		{
 			"removeQueryGroup",
-			map[string]mcastItem {
+			map[string]mcastItem{
 				"224.0.0.1": mcastItem{
 					groupAddress: net.IPNet{
-						IP: net.ParseIP("224.0.0.1"),
-						Mask: net.CIDRMask(32,32),
+						IP:   net.ParseIP("224.0.0.1"),
+						Mask: net.CIDRMask(32, 32),
 					},
 					ruleIDs: map[string]*uint16{
 						"queryRule01": &priority,
@@ -110,8 +110,8 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 				},
 				"225.1.2.3": mcastItem{
 					groupAddress: net.IPNet{
-						IP: net.ParseIP("225.1.2.3"),
-						Mask: net.CIDRMask(32,32),
+						IP:   net.ParseIP("225.1.2.3"),
+						Mask: net.CIDRMask(32, 32),
 					},
 					ruleIDs: map[string]*uint16{
 						"queryRule01": &priority,
@@ -123,15 +123,15 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 			map[string]mcastItem{
 				"225.1.2.3": mcastItem{
 					groupAddress: net.IPNet{
-						IP: net.ParseIP("225.1.2.3"),
-						Mask: net.CIDRMask(32,32),
+						IP:   net.ParseIP("225.1.2.3"),
+						Mask: net.CIDRMask(32, 32),
 					},
 					ruleIDs: map[string]*uint16{
 						"queryRule01": &priority,
 					},
 				},
 			},
-			map[string]sets.String {},
+			map[string]sets.String{},
 		},
 	}
 	for _, tt := range tests {
@@ -140,7 +140,7 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 			defer controller.Finish()
 			m, _ := newMockMcastController(t, controller)
 			go func() {
-				event:= <-m.eventCh
+				event := <-m.eventCh
 				t.Logf("got event: %v", event.eType)
 			}()
 			if tt.mcastItemRuleIDMap != nil {

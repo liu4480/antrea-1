@@ -168,7 +168,7 @@ func newLastRealized(rule *CompletedRule) *lastRealized {
 		podIPs:           nil,
 		fqdnIPAddresses:  nil,
 		groupIDAddresses: nil,
-		groupAddresses: nil,
+		groupAddresses:   nil,
 	}
 }
 
@@ -318,7 +318,7 @@ func (r *reconciler) Reconcile(rule *CompletedRule) error {
 //0 is unicast traffic
 //1 is igmp traffic
 //2 is multicast traffic
-func (r *reconciler) getRuleType (rule *CompletedRule) ruleType {
+func (r *reconciler) getRuleType(rule *CompletedRule) ruleType {
 	if !r.multicastEnabled {
 		return unicast
 	}
@@ -641,7 +641,7 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 			}
 		}
 	} else if r.mcastController != nil {
-		r.mcastController.addGroupAddressForTableIDs(rule.ID, ofPriority,groupAddress)
+		r.mcastController.addGroupAddressForTableIDs(rule.ID, ofPriority, groupAddress)
 	}
 	return ofRuleByServicesMap, lastRealized
 }
@@ -964,24 +964,24 @@ func (r *reconciler) Forget(ruleID string) error {
 	return nil
 }
 
-func (r *reconciler) getMcastGroupAddress(rule * CompletedRule) ([]string, bool) {
+func (r *reconciler) getMcastGroupAddress(rule *CompletedRule) ([]string, bool) {
 	groupAddresses := []string{}
 	isIGMP := false
 	if len(rule.Services) > 0 && (rule.Services[0].Protocol != nil) &&
 		(*rule.Services[0].Protocol == v1beta2.ProtocolIGMP) {
 		isIGMP = true
 		for _, service := range rule.Services {
-				if service.GroupAddress != nil {
-					groupAddresses = append(groupAddresses, *service.GroupAddress)
-					klog.V(4).Infof("getMcastGroupAddress service.GroupAddresses %+v", service.GroupAddress)
-				}
+			if service.GroupAddress != nil {
+				groupAddresses = append(groupAddresses, *service.GroupAddress)
+				klog.V(4).Infof("getMcastGroupAddress service.GroupAddresses %+v", service.GroupAddress)
 			}
-			if len(groupAddresses) == 0 && rule.Direction == v1beta2.DirectionIn {
-				groupAddresses = append(groupAddresses, mcastAllHosts.String())
-			}
-		} else {
-			isIGMP = false
 		}
+		if len(groupAddresses) == 0 && rule.Direction == v1beta2.DirectionIn {
+			groupAddresses = append(groupAddresses, mcastAllHosts.String())
+		}
+	} else {
+		isIGMP = false
+	}
 	klog.V(2).Infof("getMcastGroupAddress %+v %v %+v", groupAddresses, isIGMP)
 	return groupAddresses, isIGMP
 }
