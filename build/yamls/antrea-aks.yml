@@ -336,6 +336,9 @@ data:
     # feature that supports priorities, rule actions and externalEntities in the future.
     #  AntreaPolicy: true
 
+    # Enable multicast traffic. This feature is supported only with noEncap mode.
+    #  Multicast: false
+
     # Enable collecting and exposing NetworkPolicy statistics.
     #  NetworkPolicyStats: true
 
@@ -1001,7 +1004,6 @@ spec:
                               properties:
                                 igmpType:
                                   type: integer
-                                  enum: [ 17, 18, 22, 34 ]
                                 groupAddress:
                                   type: string
                                   oneOf:
@@ -1226,7 +1228,6 @@ spec:
                               properties:
                                 igmpType:
                                   type: integer
-                                  enum: [17, 18, 22, 34]
                                 groupAddress:
                                   type: string
                                   oneOf:
@@ -1924,7 +1925,6 @@ spec:
                               properties:
                                 igmpType:
                                   type: integer
-                                  enum: [ 17, 18, 22, 34 ]
                                 groupAddress:
                                   type: string
                                   oneOf:
@@ -2118,7 +2118,6 @@ spec:
                               properties:
                                 igmpType:
                                   type: integer
-                                  enum: [ 17, 18, 22, 34 ]
                                 groupAddress:
                                   type: string
                                   oneOf:
@@ -3534,7 +3533,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 4554a36b927c6e64fdbc53b4d4c64673d48c9c829ec444e3be6e699ade8481b6
+        checksum/config: 871cf9aef08c6f241c5d81ce8c5fe3e372c11ff6c08df867e4c2adc79e550d93
       labels:
         app: antrea
         component: antrea-agent
@@ -3774,7 +3773,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: 4554a36b927c6e64fdbc53b4d4c64673d48c9c829ec444e3be6e699ade8481b6
+        checksum/config: 871cf9aef08c6f241c5d81ce8c5fe3e372c11ff6c08df867e4c2adc79e550d93
       labels:
         app: antrea
         component: antrea-controller

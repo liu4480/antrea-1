@@ -646,6 +646,9 @@ func (v *antreaPolicyValidator) validateEgressMulticastAddress(egressRule []crdv
 				to.ExternalEntitySelector != nil || to.ServiceAccount != nil || to.NodeSelector != nil {
 				otherSelectors = true
 			}
+			if multicast && (*r.Action == crdv1alpha1.RuleActionPass || *r.Action == crdv1alpha1.RuleActionReject) {
+				return fmt.Sprintf("multicast does not support action Pass or Reject"), false
+			}
 		}
 		if multicast && unicast {
 			return fmt.Sprintf("can not set multicast ip address and unicast ip address at the same time"), false
@@ -657,9 +660,18 @@ func (v *antreaPolicyValidator) validateEgressMulticastAddress(egressRule []crdv
 	return "", true
 }
 
+func validIGMPType(igmp int32) bool {
+	switch igmp {
+	case crdv1alpha1.IGMPQuery, crdv1alpha1.IGMPReportV1, crdv1alpha1.IGMPReportV2, crdv1alpha1.IGMPReportV3:
+		return true
+	default:
+	}
+	return false
+}
+
 func igmpValidation(protocol crdv1alpha1.NetworkPolicyProtocol) (string, bool) {
-	if protocol.IGMP.IGMPType == nil {
-		return fmt.Sprintf("IGMP type not set: %v, expected are: [IGMPQuery: %v IGMPReportV1: %v, IGMPReportV2: %v, IGMPReportV2:%v]",
+	if protocol.IGMP.IGMPType == nil || !validIGMPType(*protocol.IGMP.IGMPType) {
+		return fmt.Sprintf("IGMP type not set properly: %v, expected are: [IGMPQuery: %v IGMPReportV1: %v, IGMPReportV2: %v, IGMPReportV2:%v]",
 			*protocol.IGMP.IGMPType, crdv1alpha1.IGMPQuery, crdv1alpha1.IGMPReportV1, crdv1alpha1.IGMPReportV2, crdv1alpha1.IGMPReportV3), false
 	}
 	if *protocol.IGMP.IGMPType == crdv1alpha1.IGMPQuery && protocol.IGMP.GroupAddress == nil {
@@ -672,7 +684,7 @@ func igmpValidation(protocol crdv1alpha1.NetworkPolicyProtocol) (string, bool) {
 	groupIP := net.ParseIP(*protocol.IGMP.GroupAddress)
 	if groupIP.IsMulticast() == false {
 		return fmt.Sprintf("ipaddress %+v(cidr %s) is not multicast",
-			groupIP, protocol.IGMP.GroupAddress), false
+			groupIP, *protocol.IGMP.GroupAddress), false
 	}
 
 	return "", true
@@ -685,6 +697,9 @@ func (v *antreaPolicyValidator) validateMulticastIGMP(ingressRules, egressRules 
 				reason, allowed := igmpValidation(protocol)
 				if !allowed {
 					return reason, allowed
+				}
+				if *r.Action == crdv1alpha1.RuleActionPass || *r.Action == crdv1alpha1.RuleActionReject {
+					return "protocol igmp does not support Pass or Reject", false
 				}
 			}
 		}

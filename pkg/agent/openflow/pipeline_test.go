@@ -220,9 +220,9 @@ func TestBuildPipeline(t *testing.T) {
 			ipStack: ipv4Only,
 			features: []feature{
 				&featurePodConnectivity{ipProtocols: ipStackMap[ipv4Only], enableMulticast: true},
-				&featureNetworkPolicy{enableAntreaPolicy: true},
+				&featureNetworkPolicy{enableAntreaPolicy: true, enableMulticast: true},
 				&featureService{enableProxy: true, proxyAll: false},
-				&featureMulticast{},
+				&featureMulticast{enableAntreaPolicy: true},
 			},
 			expectedTables: map[binding.PipelineID][]*Table{
 				pipelineRoot: {

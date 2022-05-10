@@ -283,17 +283,17 @@ func (mr *MockClientMockRecorder) InstallEndpointFlows(arg0, arg1 interface{}) *
 }
 
 // InstallIGMPGroup mocks base method
-func (m *MockClient) InstallIGMPGroup(arg0 openflow.GroupIDType, arg1 map[uint32]bool, arg2 bool, arg3 []uint32) error {
+func (m *MockClient) InstallIGMPGroup(arg0 openflow.GroupIDType, arg1 []uint32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallIGMPGroup", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "InstallIGMPGroup", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // InstallIGMPGroup indicates an expected call of InstallIGMPGroup
-func (mr *MockClientMockRecorder) InstallIGMPGroup(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) InstallIGMPGroup(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallIGMPGroup", reflect.TypeOf((*MockClient)(nil).InstallIGMPGroup), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallIGMPGroup", reflect.TypeOf((*MockClient)(nil).InstallIGMPGroup), arg0, arg1)
 }
 
 // InstallMulticastFlows mocks base method
@@ -322,20 +322,6 @@ func (m *MockClient) InstallMulticastGroup(arg0 openflow.GroupIDType, arg1 []uin
 func (mr *MockClientMockRecorder) InstallMulticastGroup(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallMulticastGroup", reflect.TypeOf((*MockClient)(nil).InstallMulticastGroup), arg0, arg1)
-}
-
-// InstallMulticastIGMPQueryFlow mocks base method
-func (m *MockClient) InstallMulticastIGMPQueryFlow() error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallMulticastIGMPQueryFlow")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// InstallMulticastIGMPQueryFlow indicates an expected call of InstallMulticastIGMPQueryFlow
-func (mr *MockClientMockRecorder) InstallMulticastIGMPQueryFlow() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallMulticastIGMPQueryFlow", reflect.TypeOf((*MockClient)(nil).InstallMulticastIGMPQueryFlow))
 }
 
 // InstallMulticastInitialFlows mocks base method

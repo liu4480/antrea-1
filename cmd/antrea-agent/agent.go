@@ -54,6 +54,7 @@ import (
 	"antrea.io/antrea/pkg/agent/secondarynetwork/cnipodcache"
 	"antrea.io/antrea/pkg/agent/secondarynetwork/podwatch"
 	"antrea.io/antrea/pkg/agent/stats"
+	"antrea.io/antrea/pkg/agent/types"
 	crdinformers "antrea.io/antrea/pkg/client/informers/externalversions"
 	"antrea.io/antrea/pkg/controller/externalippool"
 	"antrea.io/antrea/pkg/features"
@@ -287,12 +288,14 @@ func run(o *Options) error {
 	// if AntreaPolicy feature is enabled.
 	statusManagerEnabled := antreaPolicyEnabled
 	loggingEnabled := antreaPolicyEnabled
-	mcastNPController, err := networkpolicy.NewMulticastNetworkPolicyController(ofClient, ifaceStore, podUpdateChannel, v4GroupIDAllocator.Allocate())
-	if !multicastEnabled {
-		mcastNPController = nil
-	} else if err != nil {
-		return fmt.Errorf("error creating new NetworkPolicy controller: %v", err)
+	var mcastValidate types.MulticastValidate
+	if multicastEnabled && antreaPolicyEnabled {
+		mcastValidate, err = types.NewValidator()
+		if err != nil {
+			return fmt.Errorf("error creating new NetworkPolicy controller: %v", err)
+		}
 	}
+
 	networkPolicyController, err := networkpolicy.NewNetworkPolicyController(
 		antreaClientProvider,
 		ofClient,
@@ -301,7 +304,7 @@ func run(o *Options) error {
 		podUpdateChannel,
 		groupCounters,
 		groupIDUpdates,
-		mcastNPController,
+		mcastValidate,
 		antreaPolicyEnabled,
 		antreaProxyEnabled,
 		statusManagerEnabled,
@@ -599,8 +602,8 @@ func run(o *Options) error {
 			sets.NewString(append(o.config.MulticastInterfaces, nodeConfig.NodeTransportInterfaceName)...),
 			ovsBridgeClient,
 			podUpdateChannel,
-			mcastNPController,
-			features.DefaultFeatureGate.Enabled(features.AntreaPolicy))
+			mcastValidate,
+			antreaPolicyEnabled)
 		if err := mcastController.Initialize(); err != nil {
 			return err
 		}

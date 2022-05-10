@@ -1,33 +1,39 @@
+// Copyright 2022 Antrea Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package networkpolicy
 
 import (
-	"antrea.io/antrea/pkg/util/channel"
-	"fmt"
 	"net"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
-	"antrea.io/antrea/pkg/agent/openflow"
 	openflowtest "antrea.io/antrea/pkg/agent/openflow/testing"
-	"github.com/stretchr/testify/require"
 )
 
 func newMockMcastController(t *testing.T, controller *gomock.Controller) (*multicastController, *openflowtest.MockClient) {
 	mockOFClient := openflowtest.NewMockClient(controller)
 	mockIface := interfacestore.NewInterfaceStore()
-	allocator := openflow.NewGroupAllocator(false)
-	podUpdateChannel := channel.NewSubscribableChannel("PodUpdate", 100)
-	groupID := allocator.Allocate()
-	m, err := NewMulticastNetworkPolicyController(
+	m, err := newMulticastNetworkPolicyController(
 		mockOFClient,
 		mockIface,
-		podUpdateChannel,
-		groupID)
-	fmt.Println(123)
+		nil)
 	require.NoError(t, err)
 	return m, mockOFClient
 }
@@ -48,7 +54,7 @@ func TestAddGroupAddressForTableIDs(t *testing.T) {
 			nil,
 			"queryRule01",
 			map[string]mcastItem{
-				"224.0.0.1": mcastItem{
+				"224.0.0.1": {
 					groupAddress: net.IPNet{
 						IP:   net.ParseIP("224.0.0.1"),
 						Mask: net.CIDRMask(32, 32),
@@ -57,9 +63,18 @@ func TestAddGroupAddressForTableIDs(t *testing.T) {
 						"queryRule01": &priority,
 					},
 				},
+				"225.1.2.3": {
+					groupAddress: net.IPNet{
+						IP:   net.ParseIP("225.1.2.3"),
+						Mask: net.CIDRMask(32, 32),
+					},
+					ruleIDs: map[string]*uint16{
+						"queryRule01": &priority,
+					},
+				},
 			},
 			map[string]sets.String{
-				"queryRule01": sets.NewString("224.0.0.1"),
+				"queryRule01": sets.NewString("224.0.0.1", "225.1.2.3"),
 			},
 		},
 	}
@@ -68,19 +83,26 @@ func TestAddGroupAddressForTableIDs(t *testing.T) {
 			controller := gomock.NewController(t)
 			defer controller.Finish()
 			m, _ := newMockMcastController(t, controller)
-			go func() {
-				event := <-m.eventCh
-				t.Logf("got event: %v", event.eType)
-			}()
-			if tt.mcastItemRuleIDMap != nil {
-				m.mcastItemRuleIDMap = tt.mcastItemRuleIDMap
-			}
 			if tt.ruleIDGroupAddressMap != nil {
 				m.ruleIDGroupAddressMap = tt.ruleIDGroupAddressMap
 			}
+			for key := range tt.expectedMcastItemRuleIDMap {
+				item := tt.expectedMcastItemRuleIDMap[key]
+				m.mcastItemRuleCache.Add(&item)
+			}
 
-			m.addGroupAddressForTableIDs(tt.ruleID, &priority, []string{"224.0.0.1"})
-			assert.Equal(t, tt.expectedMcastItemRuleIDMap, m.mcastItemRuleIDMap)
+			mcastItemRuleIDMap := make(map[string]mcastItem)
+			for key := range tt.expectedMcastItemRuleIDMap {
+				obj, exists, _ := m.mcastItemRuleCache.GetByKey(key)
+
+				if exists {
+					item := obj.(*mcastItem)
+					mcastItemRuleIDMap[key] = *item
+				}
+			}
+
+			m.ruleIDGroupAddressMap["queryRule01"] = sets.NewString("224.0.0.1", "225.1.2.3")
+			assert.Equal(t, tt.expectedMcastItemRuleIDMap, mcastItemRuleIDMap)
 			assert.Equal(t, tt.expectedRuleIDGroupAddressMap, m.ruleIDGroupAddressMap)
 		})
 	}
@@ -97,40 +119,30 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 		expectedRuleIDGroupAddressMap map[string]sets.String
 	}{
 		{
-			"removeQueryGroup",
+			"removeGroup",
 			map[string]mcastItem{
-				"224.0.0.1": mcastItem{
+				"224.0.0.1": {
 					groupAddress: net.IPNet{
 						IP:   net.ParseIP("224.0.0.1"),
 						Mask: net.CIDRMask(32, 32),
 					},
 					ruleIDs: map[string]*uint16{
-						"queryRule01": &priority,
+						"rule01": &priority,
 					},
 				},
-				"225.1.2.3": mcastItem{
+				"225.1.2.3": {
 					groupAddress: net.IPNet{
 						IP:   net.ParseIP("225.1.2.3"),
 						Mask: net.CIDRMask(32, 32),
 					},
 					ruleIDs: map[string]*uint16{
-						"queryRule01": &priority,
+						"rule01": &priority,
 					},
 				},
 			},
 			nil,
-			"queryRule01",
-			map[string]mcastItem{
-				"225.1.2.3": mcastItem{
-					groupAddress: net.IPNet{
-						IP:   net.ParseIP("225.1.2.3"),
-						Mask: net.CIDRMask(32, 32),
-					},
-					ruleIDs: map[string]*uint16{
-						"queryRule01": &priority,
-					},
-				},
-			},
+			"rule01",
+			map[string]mcastItem{},
 			map[string]sets.String{},
 		},
 	}
@@ -139,27 +151,29 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 			controller := gomock.NewController(t)
 			defer controller.Finish()
 			m, _ := newMockMcastController(t, controller)
-			go func() {
-				event := <-m.eventCh
-				t.Logf("got event: %v", event.eType)
-			}()
-			if tt.mcastItemRuleIDMap != nil {
-				m.mcastItemRuleIDMap = tt.mcastItemRuleIDMap
-			}
 			if tt.ruleIDGroupAddressMap != nil {
 				m.ruleIDGroupAddressMap = tt.ruleIDGroupAddressMap
 			}
-			m.deleteGroupAddressForTableIDs(tt.ruleID, []string{"224.0.0.1"})
-			assert.Equal(t, tt.expectedMcastItemRuleIDMap, m.mcastItemRuleIDMap)
+			for key := range tt.mcastItemRuleIDMap {
+				item := tt.mcastItemRuleIDMap[key]
+				m.mcastItemRuleCache.Add(&item)
+			}
+
+			for key := range tt.mcastItemRuleIDMap {
+				obj, exists, _ := m.mcastItemRuleCache.GetByKey(key)
+				if exists {
+					item := obj.(*mcastItem)
+					m.mcastItemRuleCache.Delete(item)
+				}
+			}
+
+			mcastItemRuleIDMap := make(map[string]mcastItem)
+			for _, obj := range m.mcastItemRuleCache.List() {
+				item := obj.(*mcastItem)
+				mcastItemRuleIDMap[item.groupAddress.IP.String()] = *item
+			}
+			assert.Equal(t, tt.expectedMcastItemRuleIDMap, mcastItemRuleIDMap)
 			assert.Equal(t, tt.expectedRuleIDGroupAddressMap, m.ruleIDGroupAddressMap)
 		})
 	}
-}
-
-func TestValidation(t *testing.T) {
-
-}
-
-func TestSyncQueryGroup(t *testing.T) {
-
 }
