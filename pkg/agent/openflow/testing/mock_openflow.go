@@ -282,6 +282,20 @@ func (mr *MockClientMockRecorder) InstallEndpointFlows(arg0, arg1 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallEndpointFlows", reflect.TypeOf((*MockClient)(nil).InstallEndpointFlows), arg0, arg1)
 }
 
+// InstallIGMPGroup mocks base method
+func (m *MockClient) InstallIGMPGroup(arg0 openflow.GroupIDType, arg1 map[uint32]bool, arg2 bool, arg3 []uint32) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InstallIGMPGroup", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InstallIGMPGroup indicates an expected call of InstallIGMPGroup
+func (mr *MockClientMockRecorder) InstallIGMPGroup(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallIGMPGroup", reflect.TypeOf((*MockClient)(nil).InstallIGMPGroup), arg0, arg1, arg2, arg3)
+}
+
 // InstallMulticastFlows mocks base method
 func (m *MockClient) InstallMulticastFlows(arg0 net.IP, arg1 openflow.GroupIDType) error {
 	m.ctrl.T.Helper()
@@ -296,26 +310,12 @@ func (mr *MockClientMockRecorder) InstallMulticastFlows(arg0, arg1 interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallMulticastFlows", reflect.TypeOf((*MockClient)(nil).InstallMulticastFlows), arg0, arg1)
 }
 
-// InstallIGMPGroup mock base method
-func (m *MockClient) InstallIGMPGroup(arg0 openflow.GroupIDType, arg1 map[uint32]bool, arg2 bool, arg3 []uint32) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallIGMPGroup", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
 // InstallMulticastGroup mocks base method
 func (m *MockClient) InstallMulticastGroup(arg0 openflow.GroupIDType, arg1 []uint32) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InstallMulticastGroup", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
-}
-
-// InstallIGMPGroup indicates an expected call of InstallIGMPGroup
-func (mr *MockClientMockRecorder) InstallIGMPGroup(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallIGMPGroup", reflect.TypeOf((*MockClient)(nil).InstallMulticastGroup), arg0, arg1, arg2, arg3)
 }
 
 // InstallMulticastGroup indicates an expected call of InstallMulticastGroup

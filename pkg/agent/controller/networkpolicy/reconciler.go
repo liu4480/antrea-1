@@ -214,7 +214,7 @@ type reconciler struct {
 	groupCounters []proxytypes.GroupCounter
 
 	// multicast controller manages multicast cache for multicast rule.
-	mcastController *MulticastController
+	mcastController *multicastController
 
 	// multicastEnabled indicates whether multicast is enabled
 	multicastEnabled bool
@@ -225,7 +225,7 @@ func newReconciler(ofClient openflow.Client,
 	ifaceStore interfacestore.InterfaceStore,
 	idAllocator *idAllocator,
 	fqdnController *fqdnController,
-	mcastController *MulticastController,
+	mcastController *multicastController,
 	groupCounters []proxytypes.GroupCounter,
 	v4Enabled bool,
 	v6Enabled bool,

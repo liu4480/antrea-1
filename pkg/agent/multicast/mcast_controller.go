@@ -223,7 +223,7 @@ type Controller struct {
 	mRouteClient         *MRouteClient
 	ovsBridgeClient      ovsconfig.OVSBridgeClient
 	queryGroupId         binding.GroupIDType
-	mcastValidator       Validate
+	Validator            types.MulticastValidate
 	anpEnabled           bool
 }
 
@@ -235,7 +235,7 @@ func NewMulticastController(ofClient openflow.Client,
 	multicastInterfaces sets.String,
 	ovsBridgeClient ovsconfig.OVSBridgeClient,
 	podUpdateSubscriber channel.Subscriber,
-	mcastValidator Validate,
+	Validator types.MulticastValidate,
 	anpEnabled bool) *Controller {
 	eventCh := make(chan *mcastGroupEvent, workerCount)
 	groupSnooper := newSnooper(ofClient, ifaceStore, eventCh, anpEnabled)
@@ -255,7 +255,7 @@ func NewMulticastController(ofClient openflow.Client,
 		queue:            workqueue.NewNamedRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(minRetryDelay, maxRetryDelay), "multicastgroup"),
 		mRouteClient:     multicastRouteClient,
 		ovsBridgeClient:  ovsBridgeClient,
-		mcastValidator:   mcastValidator,
+		Validator:        Validator,
 		anpEnabled:       anpEnabled,
 	}
 	podUpdateSubscriber.Subscribe(c.removeLocalInterface)

@@ -108,7 +108,7 @@ type Controller struct {
 	ifaceStore            interfacestore.InterfaceStore
 	// denyConnStore is for storing deny connections for flow exporter.
 	denyConnStore   *connections.DenyConnectionStore
-	mcastController *MulticastController
+	mcastController *multicastController
 }
 
 // NewNetworkPolicyController returns a new *Controller.
@@ -119,7 +119,7 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 	podUpdateSubscriber channel.Subscriber,
 	groupCounters []proxytypes.GroupCounter,
 	groupIDUpdates <-chan string,
-	mcastController *MulticastController,
+	mcastValidator types.MulticastValidate,
 	antreaPolicyEnabled bool,
 	antreaProxyEnabled bool,
 	statusManagerEnabled bool,
@@ -147,8 +147,13 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 			return nil, err
 		}
 		if c.multicastEnabled {
-			c.mcastController = mcastController
-			c.mcastController.initialize(c.ruleCache)
+			if c.mcastController, err = newMulticastNetworkPolicyController(ofClient, ifaceStore, podUpdateSubscriber, c.ruleCache, 1); err != nil {
+				return nil, err
+			}
+			if mcastValidator != nil {
+				mcastValidator.RegisterPacketInHandler(types.McastNPValidator, c.mcastController)
+			}
+			c.mcastController.initialize()
 		}
 
 		if c.ofClient != nil {

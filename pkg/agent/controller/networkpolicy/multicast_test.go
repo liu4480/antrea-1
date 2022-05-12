@@ -16,16 +16,17 @@ import (
 	"antrea.io/antrea/pkg/util/channel"
 )
 
-func newMockMcastController(t *testing.T, controller *gomock.Controller) (*MulticastController, *openflowtest.MockClient) {
+func newMockMcastController(t *testing.T, controller *gomock.Controller) (*multicastController, *openflowtest.MockClient) {
 	mockOFClient := openflowtest.NewMockClient(controller)
 	mockIface := interfacestore.NewInterfaceStore()
 	allocator := openflow.NewGroupAllocator(false)
 	podUpdateChannel := channel.NewSubscribableChannel("PodUpdate", 100)
 	groupID := allocator.Allocate()
-	m, err := NewMulticastNetworkPolicyController(
+	m, err := newMulticastNetworkPolicyController(
 		mockOFClient,
 		mockIface,
 		podUpdateChannel,
+		nil,
 		groupID)
 	fmt.Println(123)
 	require.NoError(t, err)
