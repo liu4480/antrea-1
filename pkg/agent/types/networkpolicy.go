@@ -84,6 +84,7 @@ type PolicyRule struct {
 	TableID       uint8
 	PolicyRef     *v1beta2.NetworkPolicyReference
 	EnableLogging bool
+	IGMPRule      bool
 }
 
 // IsAntreaNetworkPolicyRule returns if a PolicyRule is created for Antrea NetworkPolicy types.

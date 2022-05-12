@@ -16,7 +16,7 @@ import (
 	"antrea.io/antrea/pkg/util/channel"
 )
 
-func newMockMcastController(t *testing.T, controller *gomock.Controller) (*multicastController, *openflowtest.MockClient) {
+func newMockMcastController(t *testing.T, controller *gomock.Controller) (*MulticastController, *openflowtest.MockClient) {
 	mockOFClient := openflowtest.NewMockClient(controller)
 	mockIface := interfacestore.NewInterfaceStore()
 	allocator := openflow.NewGroupAllocator(false)

@@ -324,20 +324,6 @@ func (mr *MockClientMockRecorder) InstallMulticastGroup(arg0, arg1 interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallMulticastGroup", reflect.TypeOf((*MockClient)(nil).InstallMulticastGroup), arg0, arg1)
 }
 
-// InstallMulticastIGMPQueryFlow mocks base method
-func (m *MockClient) InstallMulticastIGMPQueryFlow() error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InstallMulticastIGMPQueryFlow")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// InstallMulticastIGMPQueryFlow indicates an expected call of InstallMulticastIGMPQueryFlow
-func (mr *MockClientMockRecorder) InstallMulticastIGMPQueryFlow() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InstallMulticastIGMPQueryFlow", reflect.TypeOf((*MockClient)(nil).InstallMulticastIGMPQueryFlow))
-}
-
 // InstallMulticastInitialFlows mocks base method
 func (m *MockClient) InstallMulticastInitialFlows(arg0 byte) error {
 	m.ctrl.T.Helper()

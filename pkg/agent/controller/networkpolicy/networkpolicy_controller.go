@@ -108,7 +108,7 @@ type Controller struct {
 	ifaceStore            interfacestore.InterfaceStore
 	// denyConnStore is for storing deny connections for flow exporter.
 	denyConnStore   *connections.DenyConnectionStore
-	mcastController *multicastController
+	mcastController *MulticastController
 }
 
 // NewNetworkPolicyController returns a new *Controller.
@@ -119,7 +119,7 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 	podUpdateSubscriber channel.Subscriber,
 	groupCounters []proxytypes.GroupCounter,
 	groupIDUpdates <-chan string,
-	mcastController *multicastController,
+	mcastController *MulticastController,
 	antreaPolicyEnabled bool,
 	antreaProxyEnabled bool,
 	statusManagerEnabled bool,

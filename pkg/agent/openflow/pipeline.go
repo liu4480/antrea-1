@@ -1612,8 +1612,8 @@ func (f *featurePodConnectivity) arpNormalFlow() binding.Flow {
 		Done()
 }
 
-func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingress bool, tableID uint8) []binding.Flow {
-	if f.isMulticastIngressRule(tableID, ingress) {
+func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingress, isIGMP bool, tableID uint8) []binding.Flow {
+	if f.isMulticastIngressRule(tableID, ingress, isIGMP) || f.isIGMPEgressRule(tableID, ingress, isIGMP) {
 		return []binding.Flow{}
 	}
 	cookieID := f.cookieAllocator.Request(f.category).Raw()
@@ -1627,8 +1627,10 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 		offset = 32
 		field = EgressRuleCTLabel
 	}
-	if f.isMulticastEgressRule(tableID, ingress) {
+	if f.isMulticastEgressRule(tableID, ingress, isIGMP) {
 		metricTable = MulticastEgressMetricTable
+	} else if f.isIGMPIngressRule(tableID, ingress, isIGMP) {
+		metricTable = MulticastIGMPIngressMetricTable
 	}
 	metricFlow := func(isCTNew bool, protocol binding.Protocol) binding.Flow {
 		return metricTable.ofTable.BuildFlow(priorityNormal).
@@ -1650,16 +1652,18 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	return flows
 }
 
-func (f *featureNetworkPolicy) denyRuleMetricFlow(conjunctionID uint32, ingress bool, tableID uint8) binding.Flow {
-	if f.isMulticastIngressRule(tableID, ingress) {
+func (f *featureNetworkPolicy) denyRuleMetricFlow(conjunctionID uint32, ingress, isIGMP bool, tableID uint8) binding.Flow {
+	if f.isMulticastIngressRule(tableID, ingress, isIGMP) || f.isIGMPEgressRule(tableID, ingress, isIGMP) {
 		return nil
 	}
 	metricTable := IngressMetricTable
 	if !ingress {
 		metricTable = EgressMetricTable
 	}
-	if f.isMulticastEgressRule(tableID, ingress) {
+	if f.isMulticastEgressRule(tableID, ingress, isIGMP) {
 		metricTable = MulticastEgressMetricTable
+	} else if f.isIGMPIngressRule(tableID, ingress, isIGMP) {
+		metricTable = MulticastIGMPIngressMetricTable
 	}
 	return metricTable.ofTable.BuildFlow(priorityNormal).
 		Cookie(f.cookieAllocator.Request(f.category).Raw()).
@@ -1715,9 +1719,10 @@ func (f *featurePodConnectivity) ipv6Flows() []binding.Flow {
 
 // conjunctionActionFlow generates the flow to jump to a specific table if policyRuleConjunction ID is matched. Priority of
 // conjunctionActionFlow is created at priorityLow for k8s network policies, and *priority assigned by PriorityAssigner for AntreaPolicy.
-func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table binding.Table, nextTable uint8, priority *uint16, enableLogging, isIngress bool) []binding.Flow {
+func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table binding.Table, nextTable uint8,
+	priority *uint16, enableLogging, isIngress, isIGMP bool) []binding.Flow {
 	tableID := table.GetID()
-	if f.isMulticastIngressRule(tableID, isIngress) {
+	if f.isMulticastIngressRule(tableID, isIngress, isIGMP) || f.isIGMPEgressRule(tableID, isIngress, isIGMP) {
 		return []binding.Flow{}
 	}
 	cookieID := f.cookieAllocator.Request(f.category).Raw()
@@ -1773,19 +1778,22 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 
 // conjunctionActionDenyFlow generates the flow to mark the packet to be denied (dropped or rejected) if policyRuleConjunction
 // ID is matched. Any matched flow will be dropped in corresponding metric tables.
-func (f *featureNetworkPolicy) conjunctionActionDenyFlow(conjunctionID uint32, table binding.Table, priority *uint16, disposition uint32, enableLogging, isIngress bool) binding.Flow {
+func (f *featureNetworkPolicy) conjunctionActionDenyFlow(conjunctionID uint32, table binding.Table, priority *uint16,
+	disposition uint32, enableLogging, isIngress, isIGMP bool) binding.Flow {
 	ofPriority := *priority
 	metricTable := IngressMetricTable
 	tableID := table.GetID()
-	if f.isMulticastIngressRule(tableID, isIngress) {
+	if f.isMulticastIngressRule(tableID, isIngress, isIGMP) || f.isIGMPEgressRule(tableID, isIGMP, isIGMP) {
 		return nil
 	}
 	if _, ok := f.egressTables[tableID]; ok {
 		metricTable = EgressMetricTable
 	}
 	flowBuilder := table.BuildFlow(ofPriority)
-	if f.isMulticastEgressRule(tableID, isIngress) {
+	if f.isMulticastEgressRule(tableID, isIngress, isIGMP) {
 		metricTable = MulticastEgressMetricTable
+	} else if f.isIGMPIngressRule(tableID, isIngress, isIGMP) {
+		metricTable = MulticastIGMPIngressMetricTable
 	}
 	flowBuilder = flowBuilder.MatchConjID(conjunctionID).
 		Action().LoadToRegField(CNPDenyConjIDField, conjunctionID).
@@ -1821,17 +1829,21 @@ func (f *featureNetworkPolicy) conjunctionActionDenyFlow(conjunctionID uint32, t
 		Done()
 }
 
-func (f *featureNetworkPolicy) conjunctionActionPassFlow(conjunctionID uint32, table binding.Table, priority *uint16, enableLogging, isIngress bool) binding.Flow {
+func (f *featureNetworkPolicy) conjunctionActionPassFlow(conjunctionID uint32, table binding.Table, priority *uint16,
+	enableLogging, isIngress, isIGMP bool) binding.Flow {
 	ofPriority := *priority
 	conjReg := TFIngressConjIDField
 	nextTable := IngressRuleTable
 	tableID := table.GetID()
-	if f.isMulticastIngressRule(tableID, isIngress) {
+	if f.isMulticastIngressRule(tableID, isIngress, isIGMP) || f.isIGMPEgressRule(tableID, isIngress, isIGMP) {
 		return nil
-	} else if f.isMulticastEgressRule(tableID, isIngress) {
+	}
+	if f.isMulticastEgressRule(tableID, isIngress, isIGMP) {
 		// todo: confirm is multicast has pass
 		//return nil
 		nextTable = MulticastEgressMetricTable
+	} else if f.isIGMPIngressRule(tableID, isIngress, isIGMP) {
+		nextTable = MulticastIGMPIngressMetricTable
 	} else {
 		if _, ok := f.egressTables[tableID]; ok {
 			conjReg = TFEgressConjIDField
@@ -2771,7 +2783,7 @@ func (f *featureMulticast) externalMulticastReceiverFlow() binding.Flow {
 		MatchDstIPNet(*mcastCIDR).
 		Action().LoadRegMark(OFPortFoundRegMark).
 		Action().LoadToRegField(TargetOFPortField, config.HostGatewayOFPort).
-		Action().NextTable().
+		Action().GotoTable(MulticastOutputTable.GetID()).
 		Done()
 }
 

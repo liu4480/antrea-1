@@ -58,7 +58,6 @@ var (
 	MatchICMPCode       = types.NewMatchKey(binding.ProtocolICMP, types.ICMPAddr, "icmp_code")
 	MatchICMPv6Type     = types.NewMatchKey(binding.ProtocolICMPv6, types.ICMPAddr, "icmpv6_type")
 	MatchICMPv6Code     = types.NewMatchKey(binding.ProtocolICMPv6, types.ICMPAddr, "icmpv6_code")
-	MatchIGMPDstIP      = types.NewMatchKey(binding.ProtocolIGMP, types.IPAddr, "nw_dst")
 	MatchServiceGroupID = types.NewMatchKey(binding.ProtocolIP, types.ServiceGroupIDAddr, "reg7[0..31]")
 	Unsupported         = types.NewMatchKey(binding.ProtocolIP, types.UnSupported, "unknown")
 
@@ -787,6 +786,14 @@ func getServiceMatchPairs(service v1beta2.Service, ipProtocols []binding.Protoco
 				conjMatchesMatchPairs = append(conjMatchesMatchPairs, matchPairs)
 			}
 		}
+	case v1beta2.ProtocolIGMP:
+		var matchPairs []matchPair
+		if service.GroupAddress != nil && service.IGMPType != nil {
+			if *service.IGMPType == crdv1alpha1.IGMPQuery {
+				matchPairs = append(matchPairs, matchPair{matchKey: MatchDstIP, matchValue: net.ParseIP(*service.GroupAddress)})
+				conjMatchesMatchPairs = append(conjMatchesMatchPairs, matchPairs)
+			}
+		}
 	default:
 		addL4MatchPairs(MatchTCPDstPort)
 	}
@@ -992,15 +999,29 @@ func (c *client) InstallPolicyRuleFlows(rule *types.PolicyRule) error {
 	return nil
 }
 
-func (f *featureNetworkPolicy) isMulticastEgressRule(tableID uint8, isIngress bool) bool {
-	if !f.enableMulticast || isIngress {
+func (f *featureNetworkPolicy) isIGMPEgressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	if !f.enableMulticast || isIngress || !isIGMP {
+		return false
+	}
+	return true
+}
+
+func (f *featureNetworkPolicy) isIGMPIngressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	if !f.enableMulticast || !isIngress || !isIGMP {
+		return false
+	}
+	return tableID == MulticastIGMPIngressTable.GetID()
+}
+
+func (f *featureNetworkPolicy) isMulticastEgressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	if !f.enableMulticast || isIngress || isIGMP {
 		return false
 	}
 	return tableID == MulticastEgressRuleTable.GetID()
 }
 
-func (f *featureNetworkPolicy) isMulticastIngressRule(tableID uint8, isIngress bool) bool {
-	if !f.enableMulticast || !isIngress {
+func (f *featureNetworkPolicy) isMulticastIngressRule(tableID uint8, isIngress, isIGMP bool) bool {
+	if !f.enableMulticast || !isIngress || isIGMP {
 		return false
 	}
 	return true
@@ -1032,28 +1053,28 @@ func (f *featureNetworkPolicy) calculateActionFlowChangesForRule(rule *types.Pol
 		var actionFlows []binding.Flow
 		var metricFlows []binding.Flow
 		if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionDrop {
-			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.TableID); metricFlow != nil {
+			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); metricFlow != nil {
 				metricFlows = append(metricFlows, metricFlow)
 			}
-			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging, isIngress); actionFlow != nil {
+			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging, isIngress, rule.IGMPRule); actionFlow != nil {
 				actionFlows = append(actionFlows, actionFlow)
 			}
 		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionReject {
-			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.TableID); metricFlow != nil {
+			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); metricFlow != nil {
 				metricFlows = append(metricFlows, metricFlow)
 			}
-			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging, isIngress); actionFlow != nil {
+			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging, isIngress, rule.IGMPRule); actionFlow != nil {
 				actionFlows = append(actionFlows, actionFlow)
 			}
 		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionPass {
-			if actionFlow := f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging, isIngress); actionFlow != nil {
+			if actionFlow := f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging, isIngress, rule.IGMPRule); actionFlow != nil {
 				actionFlows = append(actionFlows, actionFlow)
 			}
 		} else {
-			if allowMetricFlows := f.allowRulesMetricFlows(ruleOfID, isIngress, rule.TableID); len(allowMetricFlows) > 0 {
+			if allowMetricFlows := f.allowRulesMetricFlows(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); len(allowMetricFlows) > 0 {
 				metricFlows = append(metricFlows, allowMetricFlows...)
 			}
-			if allowActionFlows := f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging, isIngress); len(allowActionFlows) > 0 {
+			if allowActionFlows := f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging, isIngress, rule.IGMPRule); len(allowActionFlows) > 0 {
 				actionFlows = append(actionFlows, allowActionFlows...)
 			}
 		}
@@ -1082,7 +1103,16 @@ func (f *featureNetworkPolicy) addRuleToConjunctiveMatch(conj *policyRuleConjunc
 	}
 	if conj.toClause != nil {
 		for _, addr := range rule.To {
-			match := generateAddressConjMatch(conj.toClause.ruleTable.GetID(), addr, types.DstAddress, rule.Priority)
+			var match *conjunctiveMatch
+			if rule.IGMPRule {
+				match = &conjunctiveMatch{
+					tableID:    conj.toClause.ruleTable.GetID(),
+					matchPairs: []matchPair{{matchKey: MatchDstOFPort, matchValue: addr.GetValue()}},
+					priority:   rule.Priority,
+				}
+			} else {
+				match = generateAddressConjMatch(conj.toClause.ruleTable.GetID(), addr, types.DstAddress, rule.Priority)
+			}
 			f.addActionToConjunctiveMatch(conj.toClause, match)
 		}
 	}

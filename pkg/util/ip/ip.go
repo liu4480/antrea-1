@@ -158,6 +158,7 @@ func IPNetToNetIPNet(ipNet *v1beta2.IPNet) *net.IPNet {
 
 const (
 	ICMPProtocol   = 1
+	IGMPProtocol   = 2
 	TCPProtocol    = 6
 	UDPProtocol    = 17
 	ICMPv6Protocol = 58
@@ -170,6 +171,8 @@ func IPProtocolNumberToString(protocolNum uint8, defaultValue string) string {
 	switch protocolNum {
 	case ICMPProtocol:
 		return "ICMP"
+	case IGMPProtocol:
+		return "IGMP"
 	case TCPProtocol:
 		return "TCP"
 	case UDPProtocol:
@@ -207,4 +210,15 @@ func GetLocalBroadcastIP(ipNet *net.IPNet) net.IP {
 	lastAddr := make(net.IP, len(ipNet.IP.To4()))
 	binary.BigEndian.PutUint32(lastAddr, binary.BigEndian.Uint32(ipNet.IP.To4())|^binary.BigEndian.Uint32(net.IP(ipNet.Mask).To4()))
 	return lastAddr
+}
+
+func IPStrToIPBlock(s string) *v1beta2.IPBlock {
+	ip := net.ParseIP(s)
+	ipb := &v1beta2.IPBlock{
+		CIDR: v1beta2.IPNet{
+			IP:           v1beta2.IPAddress(ip),
+			PrefixLength: 32,
+		},
+	}
+	return ipb
 }

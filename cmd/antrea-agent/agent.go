@@ -281,7 +281,14 @@ func run(o *Options) error {
 	// if AntreaPolicy feature is enabled.
 	statusManagerEnabled := antreaPolicyEnabled
 	loggingEnabled := antreaPolicyEnabled
-	mcastNPController, err := networkpolicy.NewMulticastNetworkPolicyController(ofClient, ifaceStore, podUpdateChannel, v4GroupIDAllocator.Allocate())
+	var mcastNPController *networkpolicy.MulticastController
+	if multicastEnabled && antreaPolicyEnabled {
+		var err error
+		mcastNPController, err = networkpolicy.NewMulticastNetworkPolicyController(ofClient, ifaceStore, podUpdateChannel, v4GroupIDAllocator.Allocate())
+		if err != nil {
+			return fmt.Errorf("error creating new NetworkPolicy controller: %v", err)
+		}
+	}
 	if !multicastEnabled {
 		mcastNPController = nil
 	} else if err != nil {

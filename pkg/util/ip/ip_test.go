@@ -186,3 +186,27 @@ func TestMustIPv6(t *testing.T) {
 		})
 	}
 }
+
+func TestIPStrToIPBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		want *v1beta2.IPBlock
+	}{
+		{
+			name: "IPv4 translate",
+			ip:   "192.168.1.1",
+			want: &v1beta2.IPBlock{
+				CIDR: v1beta2.IPNet{
+					IP:           v1beta2.IPAddress(net.ParseIP("192.168.1.1")),
+					PrefixLength: 32,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IPStrToIPBlock(tt.ip))
+		})
+	}
+}

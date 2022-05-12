@@ -91,7 +91,7 @@ func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, blo
 		group = bktBuilder.
 			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
 			LoadToRegField(TargetOFPortField, ports[i]).
-			ResubmitToTable(table.GetNext()).
+			ResubmitToTable(table.GetID()).
 			Done()
 	}
 	if err := group.Add(); err != nil {
@@ -107,7 +107,7 @@ func (f *featureMulticast) multicastReceiversGroup(groupID binding.GroupIDType, 
 		group = group.Bucket().
 			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
 			LoadToRegField(TargetOFPortField, ports[i]).
-			ResubmitToTable(MulticastRoutingTable.GetNext()).
+			ResubmitToTable(MulticastOutputTable.GetID()).
 			Done()
 	}
 	if err := group.Add(); err != nil {

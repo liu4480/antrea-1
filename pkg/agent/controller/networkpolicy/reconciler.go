@@ -214,7 +214,7 @@ type reconciler struct {
 	groupCounters []proxytypes.GroupCounter
 
 	// multicast controller manages multicast cache for multicast rule.
-	mcastController *multicastController
+	mcastController *MulticastController
 
 	// multicastEnabled indicates whether multicast is enabled
 	multicastEnabled bool
@@ -225,7 +225,7 @@ func newReconciler(ofClient openflow.Client,
 	ifaceStore interfacestore.InterfaceStore,
 	idAllocator *idAllocator,
 	fqdnController *fqdnController,
-	mcastController *multicastController,
+	mcastController *MulticastController,
 	groupCounters []proxytypes.GroupCounter,
 	v4Enabled bool,
 	v6Enabled bool,
@@ -528,29 +528,50 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 	r.lastRealizeds.Store(rule.ID, lastRealized)
 
 	ofRuleByServicesMap := map[servicesKey]*types.PolicyRule{}
-	groupAddress, igmp := r.getMcastGroupAddress(rule)
-	if !igmp {
+	groupAddress, isIGMP := r.getMcastGroupAddress(rule)
+	if !isIGMP || isIGMP && rule.Direction == v1beta2.DirectionIn {
 		if rule.Direction == v1beta2.DirectionIn {
 			// Addresses got from source GroupMembers' IPs.
-			from1 := groupMembersToOFAddresses(rule.FromAddresses)
-			// Get addresses that in From IPBlock but not in Except IPBlocks.
-			from2 := ipBlocksToOFAddresses(rule.From.IPBlocks, r.ipv4Enabled, r.ipv6Enabled)
-
-			membersByServicesMap, servicesMap := groupMembersByServices(rule.Services, rule.TargetMembers)
-			for svcKey, members := range membersByServicesMap {
-				ofPorts := r.getOFPorts(members)
+			var from1, from2 []types.Address
+			//ipBlocks := []v1beta2.IPBlock{}
+			if isIGMP {
+				svcKey := servicesKey(fmt.Sprintf("igmp-query-%s", rule.ID))
+				ofPorts := r.getOFPorts(rule.TargetMembers)
 				lastRealized.podOFPorts[svcKey] = ofPorts
 				ofRuleByServicesMap[svcKey] = &types.PolicyRule{
 					Direction:     v1beta2.DirectionIn,
 					From:          append(from1, from2...),
 					To:            ofPortsToOFAddresses(ofPorts),
-					Service:       filterUnresolvablePort(servicesMap[svcKey]),
+					Service:       filterUnresolvablePort(rule.Services),
 					Action:        rule.Action,
 					Name:          rule.Name,
 					Priority:      ofPriority,
 					TableID:       table,
 					PolicyRef:     rule.SourceRef,
 					EnableLogging: rule.EnableLogging,
+					IGMPRule:      isIGMP,
+				}
+			} else {
+				from1 = groupMembersToOFAddresses(rule.FromAddresses)
+				// Get addresses that in From IPBlock but not in Except IPBlocks.
+				from2 = ipBlocksToOFAddresses(rule.From.IPBlocks, r.ipv4Enabled, r.ipv6Enabled)
+				membersByServicesMap, servicesMap := groupMembersByServices(rule.Services, rule.TargetMembers)
+				for svcKey, members := range membersByServicesMap {
+					ofPorts := r.getOFPorts(members)
+					lastRealized.podOFPorts[svcKey] = ofPorts
+					ofRuleByServicesMap[svcKey] = &types.PolicyRule{
+						Direction:     v1beta2.DirectionIn,
+						From:          append(from1, from2...),
+						To:            ofPortsToOFAddresses(ofPorts),
+						Service:       filterUnresolvablePort(servicesMap[svcKey]),
+						Action:        rule.Action,
+						Name:          rule.Name,
+						Priority:      ofPriority,
+						TableID:       table,
+						PolicyRef:     rule.SourceRef,
+						EnableLogging: rule.EnableLogging,
+						IGMPRule:      isIGMP,
+					}
 				}
 			}
 		} else {
@@ -579,6 +600,7 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 					TableID:       table,
 					PolicyRef:     rule.SourceRef,
 					EnableLogging: rule.EnableLogging,
+					IGMPRule:      isIGMP,
 				}
 			}
 
@@ -603,6 +625,7 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 						TableID:       table,
 						PolicyRef:     rule.SourceRef,
 						EnableLogging: rule.EnableLogging,
+						IGMPRule:      isIGMP,
 					}
 					ofRuleByServicesMap[svcKey] = ofRule
 				}
