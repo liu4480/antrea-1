@@ -522,7 +522,6 @@ func (r *reconciler) add(rule *CompletedRule, ofPriority *uint16, table uint8) e
 
 func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint16, table uint8) (
 	map[servicesKey]*types.PolicyRule, *lastRealized) {
-	klog.Infof("computeOFRulesForAdd %+v %+v %+v", rule, rule.ID, rule.Services)
 	lastRealized := newLastRealized(rule)
 	// TODO: Handle the case that the following processing fails or partially succeeds.
 	r.lastRealizeds.Store(rule.ID, lastRealized)

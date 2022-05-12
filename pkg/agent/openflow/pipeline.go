@@ -1646,6 +1646,16 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	// The flow matching 'ct_state=+new' tracks the number of sessions and byte count of the first packet for each
 	// session.
 	// The flow matching 'ct_state=-new' tracks the byte/packet count of an established connection (both directions).
+	if isIGMP || f.isMulticastEgressRule(tableID, ingress, isIGMP) {
+		flow := metricTable.ofTable.BuildFlow(priorityNormal).
+			Cookie(f.cookieAllocator.Request(f.category).Raw()).
+			MatchRegMark(CnpDenyRegMark).
+			MatchRegFieldWithValue(CNPDenyConjIDField, conjunctionID).
+			Action().GotoTable(metricTable.GetNext()).
+			Done()
+		flows = append(flows, flow)
+		return flows
+	}
 	for _, ipProtocol := range f.ipProtocols {
 		flows = append(flows, metricFlow(true, ipProtocol), metricFlow(false, ipProtocol))
 	}
@@ -1770,6 +1780,15 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 			Done()
 	}
 	var flows []binding.Flow
+	if isIGMP || f.isMulticastEgressRule(tableID, isIngress, isIGMP) {
+		flow := table.BuildFlow(ofPriority).MatchConjID(conjunctionID).
+			Action().LoadToRegField(CNPDenyConjIDField, conjunctionID).
+			Action().LoadRegMark(CnpDenyRegMark).Action().GotoTable(table.GetNext()).
+			Cookie(f.cookieAllocator.Request(f.category).Raw()).
+			Done()
+		flows = append(flows, flow)
+		return flows
+	}
 	for _, proto := range f.ipProtocols {
 		flows = append(flows, conjActionFlow(proto))
 	}

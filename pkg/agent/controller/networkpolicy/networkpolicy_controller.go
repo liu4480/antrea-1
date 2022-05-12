@@ -147,13 +147,12 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 			return nil, err
 		}
 		if c.multicastEnabled {
-			if c.mcastController, err = newMulticastNetworkPolicyController(ofClient, ifaceStore, podUpdateSubscriber, c.ruleCache, 1); err != nil {
+			if c.mcastController, err = newMulticastNetworkPolicyController(ofClient, ifaceStore, c.ruleCache); err != nil {
 				return nil, err
 			}
 			if mcastValidator != nil {
 				mcastValidator.RegisterPacketInHandler(types.McastNPValidator, c.mcastController)
 			}
-			c.mcastController.initialize()
 		}
 
 		if c.ofClient != nil {

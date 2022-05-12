@@ -11,23 +11,16 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"antrea.io/antrea/pkg/agent/interfacestore"
-	"antrea.io/antrea/pkg/agent/openflow"
 	openflowtest "antrea.io/antrea/pkg/agent/openflow/testing"
-	"antrea.io/antrea/pkg/util/channel"
 )
 
 func newMockMcastController(t *testing.T, controller *gomock.Controller) (*multicastController, *openflowtest.MockClient) {
 	mockOFClient := openflowtest.NewMockClient(controller)
 	mockIface := interfacestore.NewInterfaceStore()
-	allocator := openflow.NewGroupAllocator(false)
-	podUpdateChannel := channel.NewSubscribableChannel("PodUpdate", 100)
-	groupID := allocator.Allocate()
 	m, err := newMulticastNetworkPolicyController(
 		mockOFClient,
 		mockIface,
-		podUpdateChannel,
-		nil,
-		groupID)
+		nil)
 	fmt.Println(123)
 	require.NoError(t, err)
 	return m, mockOFClient
@@ -69,10 +62,6 @@ func TestAddGroupAddressForTableIDs(t *testing.T) {
 			controller := gomock.NewController(t)
 			defer controller.Finish()
 			m, _ := newMockMcastController(t, controller)
-			go func() {
-				event := <-m.eventCh
-				t.Logf("got event: %v", event.eType)
-			}()
 			if tt.mcastItemRuleIDMap != nil {
 				m.mcastItemRuleIDMap = tt.mcastItemRuleIDMap
 			}
@@ -140,10 +129,6 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 			controller := gomock.NewController(t)
 			defer controller.Finish()
 			m, _ := newMockMcastController(t, controller)
-			go func() {
-				event := <-m.eventCh
-				t.Logf("got event: %v", event.eType)
-			}()
 			if tt.mcastItemRuleIDMap != nil {
 				m.mcastItemRuleIDMap = tt.mcastItemRuleIDMap
 			}
@@ -155,12 +140,4 @@ func TestDeleteGroupAddressForTableIDs(t *testing.T) {
 			assert.Equal(t, tt.expectedRuleIDGroupAddressMap, m.ruleIDGroupAddressMap)
 		})
 	}
-}
-
-func TestValidation(t *testing.T) {
-
-}
-
-func TestSyncQueryGroup(t *testing.T) {
-
 }

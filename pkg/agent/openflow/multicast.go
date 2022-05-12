@@ -75,20 +75,11 @@ func (f *featureMulticast) replayFlows() []binding.Flow {
 	return getCachedFlows(f.cachedFlows)
 }
 
-func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, blockedPorts map[uint32]bool,
-	querygroup bool, ports ...uint32) error {
+func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, ports ...uint32) error {
 	table := MulticastIGMPIngressTable
 	group := f.bridge.CreateGroupTypeAll(groupID).ResetBuckets()
-	ok := false
 	for i := range ports {
-		if blockedPorts != nil {
-			_, ok = blockedPorts[ports[i]]
-		}
-		bktBuilder := group.Bucket()
-		if ok && querygroup {
-			bktBuilder = bktBuilder.LoadToRegField(McastDropByNPRegMark.GetField(), 1)
-		}
-		group = bktBuilder.
+		group = group.Bucket().
 			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
 			LoadToRegField(TargetOFPortField, ports[i]).
 			ResubmitToTable(table.GetID()).
