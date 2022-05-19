@@ -336,9 +336,6 @@ data:
     # feature that supports priorities, rule actions and externalEntities in the future.
     #  AntreaPolicy: true
 
-    # Enable multicast traffic. This feature is supported only with noEncap mode.
-    #  Multicast: false
-
     # Enable collecting and exposing NetworkPolicy statistics.
     #  NetworkPolicyStats: true
 
@@ -3533,7 +3530,7 @@ spec:
         kubectl.kubernetes.io/default-container: antrea-agent
         # Automatically restart Pods with a RollingUpdate if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: adf51cb193478778f625e4a6dec66b76d387fd6e0373c25fc508420609573df6
+        checksum/config: f7414e9171ab246b09dc380bc7934ebac81af7a5ef7bd3f73d661b6301040768
       labels:
         app: antrea
         component: antrea-agent
@@ -3773,7 +3770,7 @@ spec:
       annotations:
         # Automatically restart Pod if the ConfigMap changes
         # See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deployments
-        checksum/config: adf51cb193478778f625e4a6dec66b76d387fd6e0373c25fc508420609573df6
+        checksum/config: f7414e9171ab246b09dc380bc7934ebac81af7a5ef7bd3f73d661b6301040768
       labels:
         app: antrea
         component: antrea-controller

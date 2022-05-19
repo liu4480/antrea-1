@@ -1041,13 +1041,11 @@ func (f *featureNetworkPolicy) isMulticastEgressRule(tableID uint8, isIngress, i
 // Ingress rules for IGMP packets are enforced by the packetIn handler.
 // Check if the rule is ingress for multicast traffic, caller will return empty flow if it is
 func (f *featureNetworkPolicy) isMulticastIngressRule(tableID uint8, isIngress, isIGMP bool) bool {
-	// If multicast is enabled, and the rule is ingress, while it is not IGMP,
-	// the rule is ingress for multicast UDP traffic.
-	// Otherwise, it is not.
-	if !f.enableMulticast || !isIngress || isIGMP {
-		return false
+	// Currently ingress rules for multicast traffic are not supported, we set the tableID to 0 to mark it.
+	if tableID == 0 {
+		return true
 	}
-	return true
+	return false
 }
 
 // calculateActionFlowChangesForRule calculates and updates the actionFlows for the conjunction corresponded to the ofPolicyRule.

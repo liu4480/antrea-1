@@ -486,7 +486,7 @@ func (c *Controller) memberChanged(e interface{}) {
 	containerID := podEvent.ContainerID
 	interfaceName := util.GenerateContainerInterfaceName(name, namespace, containerID)
 	iface, ok := c.ifaceStore.GetInterfaceByName(interfaceName)
-	klog.V(2).InfoS("memberChanged: ", "IsAdd", podEvent.IsAdd, "namespace", namespace,
+	klog.V(2).InfoS("Calling memberChanged", "IsAdd", podEvent.IsAdd, "namespace", namespace,
 		"name", name)
 	if podEvent.IsAdd {
 		if ok {
@@ -512,9 +512,9 @@ func (c *Controller) syncQueryGroup(stopCh <-chan struct{}) {
 	for {
 		select {
 		case event := <-c.queryGroupCh:
-			klog.InfoS("resync query group")
+			klog.InfoS("Resync query group")
 			if c.queryGroupId == 0 {
-				klog.InfoS("c.queryGroupId is 0, query group will not be installed")
+				klog.V(2).InfoS("As c.queryGroupId is 0, query group will not be installed")
 				return
 			}
 			if event.eType == groupJoin {
@@ -522,14 +522,14 @@ func (c *Controller) syncQueryGroup(stopCh <-chan struct{}) {
 					c.queryGroupMember[event.iface.OFPort] = struct{}{}
 					err := c.updateQueryGroup()
 					if err != nil {
-						klog.ErrorS(err, "failed to update query group for groupJoin")
+						klog.ErrorS(err, "Failed to update query group for groupJoin")
 					}
 				}
 			} else if event.eType == groupLeave {
 				delete(c.queryGroupMember, event.iface.OFPort)
 				err := c.updateQueryGroup()
 				if err != nil {
-					klog.ErrorS(err, "failed to update query group for groupLeave")
+					klog.ErrorS(err, "Failed to update query group for groupLeave")
 				}
 			}
 		case <-stopCh:
@@ -568,7 +568,7 @@ func (c *Controller) initQueryGroup() error {
 	if len(c.queryGroupMember) > 0 {
 		err := c.updateQueryGroup()
 		if err != nil {
-			klog.ErrorS(err, "failed to update query group")
+			klog.ErrorS(err, "Failed to update query group")
 			return err
 		}
 	}

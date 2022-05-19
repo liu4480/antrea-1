@@ -374,8 +374,10 @@ func (r *reconciler) getOFRuleTable(rule *CompletedRule) (uint8, ruleType) {
 
 	case multicast:
 		// multicast NetworkPolicy only supports egress so far
-		ruleTables = openflow.GetAntreaMulticastEgressTable()
-		tableID = ruleTables[0].GetID()
+		if rule.Direction == v1beta2.DirectionOut {
+			ruleTables = openflow.GetAntreaMulticastEgressTable()
+			tableID = ruleTables[0].GetID()
+		}
 	}
 	return tableID, rule_type
 }
@@ -988,7 +990,7 @@ func (r *reconciler) getIGMPGroupAddress(rule *CompletedRule) []string {
 			groupAddresses = append(groupAddresses, types.McastAllHosts.String())
 		}
 	}
-	klog.V(2).InfoS("getMcastGroupAddress got", "groupAddresses", groupAddresses)
+	klog.V(2).InfoS("Call getMcastGroupAddress and return", "groupAddresses", groupAddresses)
 	return groupAddresses
 }
 

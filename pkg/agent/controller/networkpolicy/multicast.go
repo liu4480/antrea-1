@@ -161,7 +161,7 @@ func (c *multicastController) validate(iface *interfacestore.InterfaceConfig,
 	} else {
 		action, uuid, ruleName = v1alpha1.RuleActionAllow, "", ""
 	}
-	klog.V(2).InfoS("call validation:", "action", action, "uuid", uuid, "ruleName", ruleName, "ruleType", ruleTypePtr)
+	klog.V(2).InfoS("Call validation:", "action", action, "uuid", uuid, "ruleName", ruleName, "ruleType", ruleTypePtr)
 	return &action, uuid, ruleTypePtr, ruleName, nil
 }
 
@@ -183,7 +183,7 @@ func (c *multicastController) processNextWorkItem() bool {
 		// go into a loop of attempting to process a work item that is invalid.
 		// This should not happen.
 		c.queue.Forget(obj)
-		klog.Errorf("Expected string in work queue but got %#v", obj)
+		klog.Errorf("Expected mcastIGMPRule in work queue but got %#v", obj)
 		return true
 	} else if err := c.syncIGMPRule(item); err == nil {
 		// If no error occurs we Forget this item, it does not get queued again until
@@ -192,7 +192,7 @@ func (c *multicastController) processNextWorkItem() bool {
 	} else {
 		// Put the item back on the workqueue to handle any transient errors.
 		c.queue.AddRateLimited(item)
-		klog.Errorf("Error syncing multicast rule %+v, requeuing. Error: %v", item, err)
+		klog.ErrorS(err, "error syncing multicast rule", "item", item)
 	}
 	return true
 }
@@ -203,7 +203,7 @@ func (c *multicastController) syncIGMPRule(igmpRule *mcastIGMPRule) error {
 	var item *mcastItem
 	switch igmpRule.event {
 	case ruleAdd:
-		klog.V(2).InfoS("add rule", "igmpRule", igmpRule)
+		klog.V(2).InfoS("Add rule", "igmpRule", igmpRule)
 		memberList := sets.String{}
 		for _, group := range igmpRule.groupAddress {
 			item = &mcastItem{
@@ -226,7 +226,7 @@ func (c *multicastController) syncIGMPRule(igmpRule *mcastIGMPRule) error {
 		}
 		c.ruleIDGroupAddressMap[igmpRule.ruleID] = memberList
 	case ruleUpdate:
-		klog.V(2).InfoS("update rule", "igmpRule", igmpRule)
+		klog.V(2).InfoS("Update rule", "igmpRule", igmpRule)
 		groupAddresses, _ := c.ruleIDGroupAddressMap[igmpRule.ruleID]
 		//rule changed
 		members := sets.String{}
@@ -276,7 +276,7 @@ func (c *multicastController) syncIGMPRule(igmpRule *mcastIGMPRule) error {
 		c.ruleIDGroupAddressMap[igmpRule.ruleID] = members
 	case ruleDelete:
 		//remove from cache
-		klog.V(2).InfoS("delete rule", "igmpRule", igmpRule)
+		klog.V(2).InfoS("Delete rule", "igmpRule", igmpRule)
 		memberList := c.ruleIDGroupAddressMap[igmpRule.ruleID]
 		for member := range memberList {
 			obj, exists, _ := c.mcastItemRuleCache.GetByKey(member)
