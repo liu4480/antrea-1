@@ -1274,7 +1274,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
 										IGMPType:     &query,
-										GroupAddress: &queryAddr,
+										GroupAddress: queryAddr,
 									},
 								},
 							},
@@ -1299,7 +1299,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 							{
 								Protocol:     &protocolIGMP,
 								IGMPType:     &query,
-								GroupAddress: &queryAddr,
+								GroupAddress: queryAddr,
 							},
 						},
 						Priority: 0,
@@ -1333,7 +1333,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 								{
 									IGMP: &crdv1alpha1.IGMPProtocol{
 										IGMPType:     &report,
-										GroupAddress: &reportAddr,
+										GroupAddress: reportAddr,
 									},
 								},
 							},
@@ -1358,7 +1358,7 @@ func TestProcessClusterNetworkPolicy(t *testing.T) {
 							{
 								Protocol:     &protocolIGMP,
 								IGMPType:     &report,
-								GroupAddress: &reportAddr,
+								GroupAddress: reportAddr,
 							},
 						},
 						Priority: 0,

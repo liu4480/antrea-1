@@ -985,11 +985,6 @@ func (in *Service) DeepCopyInto(out *Service) {
 		*out = new(int32)
 		**out = **in
 	}
-	if in.GroupAddress != nil {
-		in, out := &in.GroupAddress, &out.GroupAddress
-		*out = new(string)
-		**out = **in
-	}
 	return
 }
 

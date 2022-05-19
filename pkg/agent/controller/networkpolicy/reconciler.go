@@ -982,8 +982,8 @@ func (r *reconciler) getIGMPGroupAddress(rule *CompletedRule) []string {
 	if len(rule.Services) > 0 && (rule.Services[0].Protocol != nil) &&
 		(*rule.Services[0].Protocol == v1beta2.ProtocolIGMP) {
 		for _, service := range rule.Services {
-			if service.GroupAddress != nil {
-				groupAddresses = append(groupAddresses, *service.GroupAddress)
+			if service.GroupAddress != "" {
+				groupAddresses = append(groupAddresses, service.GroupAddress)
 			}
 		}
 		if len(groupAddresses) == 0 && rule.Direction == v1beta2.DirectionIn {

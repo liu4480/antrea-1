@@ -674,17 +674,17 @@ func igmpValidation(protocol crdv1alpha1.NetworkPolicyProtocol) (string, bool) {
 		return fmt.Sprintf("IGMP type not set properly: %v, expected are: [IGMPQuery: %v IGMPReportV1: %v, IGMPReportV2: %v, IGMPReportV2:%v]",
 			*protocol.IGMP.IGMPType, crdv1alpha1.IGMPQuery, crdv1alpha1.IGMPReportV1, crdv1alpha1.IGMPReportV2, crdv1alpha1.IGMPReportV3), false
 	}
-	if *protocol.IGMP.IGMPType == crdv1alpha1.IGMPQuery && protocol.IGMP.GroupAddress == nil {
+	if *protocol.IGMP.IGMPType == crdv1alpha1.IGMPQuery && protocol.IGMP.GroupAddress == "" {
 		groupAddress := "224.0.0.1"
-		protocol.IGMP.GroupAddress = &groupAddress
+		protocol.IGMP.GroupAddress = groupAddress
 	}
-	if protocol.IGMP.GroupAddress == nil {
+	if protocol.IGMP.GroupAddress == "" {
 		return fmt.Sprintf("groupAddress should be set with igmp report"), false
 	}
-	groupIP := net.ParseIP(*protocol.IGMP.GroupAddress)
+	groupIP := net.ParseIP(protocol.IGMP.GroupAddress)
 	if groupIP.IsMulticast() == false {
 		return fmt.Sprintf("ipaddress %+v(cidr %s) is not multicast",
-			groupIP, *protocol.IGMP.GroupAddress), false
+			groupIP, protocol.IGMP.GroupAddress), false
 	}
 
 	return "", true

@@ -190,11 +190,6 @@ func (in *IGMPProtocol) DeepCopyInto(out *IGMPProtocol) {
 		*out = new(int32)
 		**out = **in
 	}
-	if in.GroupAddress != nil {
-		in, out := &in.GroupAddress, &out.GroupAddress
-		*out = new(string)
-		**out = **in
-	}
 	return
 }
 

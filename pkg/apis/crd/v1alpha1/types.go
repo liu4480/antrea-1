@@ -630,5 +630,5 @@ type ICMPProtocol struct {
 
 type IGMPProtocol struct {
 	IGMPType     *int32  `json:"igmpType"`
-	GroupAddress *string `json:"groupAddress,omitempty"`
+	GroupAddress string `json:"groupAddress,omitempty"`
 }

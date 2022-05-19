@@ -295,7 +295,7 @@ type Service struct {
 
 	// IGMPType and GroupAddress can only be specified when the Protocol is IGMP.
 	IGMPType     *int32
-	GroupAddress *string
+	GroupAddress string
 }
 
 // NetworkPolicyPeer describes a peer of NetworkPolicyRules.

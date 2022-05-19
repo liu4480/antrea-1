@@ -293,8 +293,8 @@ type Service struct {
 	ICMPCode *int32 `json:"icmpCode,omitempty" protobuf:"bytes,5,opt,name=icmpCode"`
 	// IGMPType and GroupAddress can only be specified when the Protocol is IGMP.
 	// +optional
-	IGMPType     *int32  `json:"igmpType,omitempty" protobuf:"bytes,6,opt,name=igmpType"`
-	GroupAddress *string `json:"groupAddress,omitempty" protobuf:"bytes,7,opt,name=groupAddress"`
+	IGMPType     *int32 `json:"igmpType,omitempty" protobuf:"bytes,6,opt,name=igmpType"`
+	GroupAddress string `json:"groupAddress,omitempty" protobuf:"bytes,7,opt,name=groupAddress"`
 }
 
 // NetworkPolicyPeer describes a peer of NetworkPolicyRules.
