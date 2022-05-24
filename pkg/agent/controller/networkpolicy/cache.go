@@ -96,6 +96,35 @@ type rule struct {
 	EnableLogging bool
 }
 
+func (r *rule) Less(r2 rule) bool {
+	// priorities for rule r
+	TierPriority1, PolicyPriority1 := int32(0), float64(0)
+	// priorities for rule r2
+	TierPriority2, PolicyPriority2 := int32(0), float64(0)
+
+	if r.TierPriority != nil {
+		TierPriority1 = *r.TierPriority
+	}
+	if r.PolicyPriority != nil {
+		PolicyPriority1 = *r.PolicyPriority
+	}
+	if r2.TierPriority != nil {
+		TierPriority2 = *r2.TierPriority
+	}
+	if r2.PolicyPriority != nil {
+		PolicyPriority2 = *r2.PolicyPriority
+	}
+
+	// compare two rules' priorities
+	if TierPriority1 == TierPriority2 {
+		if PolicyPriority1 == PolicyPriority2 {
+			return r.Priority > r2.Priority
+		}
+		return PolicyPriority1 > PolicyPriority2
+	}
+	return TierPriority1 > TierPriority2
+}
+
 // hashRule calculates a string based on the rule's content.
 func hashRule(r *rule) string {
 	hash := sha1.New() // #nosec G401: not used for security purposes

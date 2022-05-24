@@ -135,7 +135,7 @@ func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
 	return true, nil
 }
 
-func (s *IGMPSnooper) packetInHandler(event *mcastGroupEvent) {
+func (s *IGMPSnooper) validatePacketAndNotify(event *mcastGroupEvent) {
 	allow, _ := s.validate(event)
 	if allow {
 		s.eventCh <- event
@@ -169,7 +169,7 @@ func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
 			time:  now,
 			iface: iface,
 		}
-		s.packetInHandler(event)
+		s.validatePacketAndNotify(event)
 	case protocol.IGMPv3Report:
 		msg := igmp.(*protocol.IGMPv3MembershipReport)
 		for _, gr := range msg.GroupRecords {
@@ -185,7 +185,7 @@ func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
 				time:  now,
 				iface: iface,
 			}
-			s.packetInHandler(event)
+			s.validatePacketAndNotify(event)
 		}
 
 	case protocol.IGMPv2LeaveGroup:

@@ -141,7 +141,7 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 		multicastEnabled:     multicastEnabled,
 		loggingEnabled:       loggingEnabled,
 	}
-	c.ruleCache = newRuleCache(c.enqueueRule, podUpdateSubscriber, groupIDUpdates)
+
 	if antreaPolicyEnabled {
 		var err error
 		if c.fqdnController, err = newFQDNController(ofClient, idAllocator, dnsServerOverride, c.enqueueRule, v4Enabled, v6Enabled); err != nil {
@@ -154,6 +154,7 @@ func NewNetworkPolicyController(antreaClientGetter agent.AntreaClientProvider,
 	}
 	c.reconciler = newReconciler(ofClient, ifaceStore, idAllocator, c.fqdnController, groupCounters,
 		v4Enabled, v6Enabled, antreaPolicyEnabled, multicastEnabled)
+	c.ruleCache = newRuleCache(c.enqueueRule, podUpdateSubscriber, groupIDUpdates)
 	if statusManagerEnabled {
 		c.statusManager = newStatusController(antreaClientGetter, nodeName, c.ruleCache)
 	}
@@ -497,7 +498,6 @@ func (c *Controller) comparePriority(r1, r2 *rule) bool {
 	if r2.PolicyPriority != nil {
 		p2.PolicyPriority = *r2.PolicyPriority
 	}
-	klog.V(4).InfoS("compare priorities between two rules", "rule1", *p1, "rule2", p2)
 	return p1.Less(p2)
 }
 
@@ -511,14 +511,8 @@ func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP,
 		},
 	}
 
-	objects, err := c.ruleCache.rules.ByIndex(mcastGroupAddressIndex, groupAddress.String())
-	if err != nil {
-		return types.McastNPValidationItem{}, err
-	}
-	objects2, err := c.ruleCache.rules.ByIndex(mcastGroupAddressIndex, "")
-	if err != nil && len(objects) == 0 {
-		return types.McastNPValidationItem{}, err
-	}
+	objects, _ := c.ruleCache.rules.ByIndex(mcastGroupAddressIndex, groupAddress.String())
+	objects2, _ := c.ruleCache.rules.ByIndex(mcastGroupAddressIndex, "")
 	objects = append(objects, objects2...)
 	var matchedRule *rule
 	for _, obj := range objects {
@@ -528,7 +522,7 @@ func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP,
 			continue
 		}
 		if groupMembers.Has(member) && direction == rule.Direction &&
-			(matchedRule == nil || c.comparePriority(matchedRule, rule)) {
+			(matchedRule == nil || matchedRule.Less(*rule)) {
 			matchedRule = rule
 		}
 	}

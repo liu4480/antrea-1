@@ -490,7 +490,6 @@ type NetworkPolicyPort struct {
 
 // RuleAction describes the action to be applied on traffic matching a rule.
 type RuleAction string
-type IGMPKind string
 
 const (
 	// RuleActionAllow describes that the traffic matching the rule must be allowed.
@@ -628,6 +627,13 @@ type ICMPProtocol struct {
 	ICMPCode *int32 `json:"icmpCode,omitempty"`
 }
 
+// IGMPProtocol matches IGMP traffic with IGMPType and GroupAddress. IGMPType must
+// be filled with:
+// IGMPQuery    int32 = 0x11
+// IGMPReportV1 int32 = 0x12
+// IGMPReportV2 int32 = 0x16
+// IGMPReportV3 int32 = 0x22
+// If groupAddress is empty, all groupAddresses will be matched.
 type IGMPProtocol struct {
 	IGMPType     *int32 `json:"igmpType,omitempty"`
 	GroupAddress string `json:"groupAddress,omitempty"`

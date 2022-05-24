@@ -186,11 +186,8 @@ func (c *Controller) clearStaleGroups() {
 // removeLocalInterface searches the GroupMemberStatus which the deleted interface has joined, and then triggers a member
 // leave event so that Antrea can remove the corresponding interface from local multicast receivers on OVS. This function
 // should be called if the removed Pod receiver fails to send IGMP leave message before deletion.
-func (c *Controller) removeLocalInterface(interfaceName string) {
-	ifConfig := &interfacestore.InterfaceConfig{
-		InterfaceName: interfaceName,
-	}
-	groupStatuses := c.getGroupMemberStatusesByPod(interfaceName)
+func (c *Controller) removeLocalInterface(ifConfig *interfacestore.InterfaceConfig) {
+	groupStatuses := c.getGroupMemberStatusesByPod(ifConfig.InterfaceName)
 	for _, g := range groupStatuses {
 		event := &mcastGroupEvent{
 			group: g.group,
@@ -222,7 +219,7 @@ type Controller struct {
 	mcastGroupTimeout   time.Duration
 	queryGroupId        binding.GroupIDType
 	queryGroupInstalled bool
-	queryGroupMember    map[string]int32
+	queryGroupMember    map[string]uint32
 	queryGroupCh        chan *mcastGroupEvent
 }
 
@@ -259,7 +256,7 @@ func NewMulticastController(ofClient openflow.Client,
 		mcastGroupTimeout:   igmpQueryInterval * 3,
 		queryGroupId:        v4GroupAllocator.Allocate(),
 		queryGroupInstalled: false,
-		queryGroupMember:    make(map[string]int32),
+		queryGroupMember:    make(map[string]uint32),
 		queryGroupCh:        make(chan *mcastGroupEvent),
 	}
 	podUpdateSubscriber.Subscribe(c.memberChanged)
@@ -487,11 +484,11 @@ func (c *Controller) memberChanged(e interface{}) {
 	podEvent := e.(types.PodUpdate)
 	namespace, name := podEvent.PodNamespace, podEvent.PodName
 	containerID := podEvent.ContainerID
-	iface, ok := c.ifaceStore.GetContainerInterface(containerID)
 
 	klog.V(2).InfoS("Calling memberChanged", "IsAdd", podEvent.IsAdd, "namespace", namespace,
 		"name", name)
 	if podEvent.IsAdd {
+		iface, ok := c.ifaceStore.GetContainerInterface(containerID)
 		if ok {
 			g := &mcastGroupEvent{
 				eType: groupJoin,
@@ -501,36 +498,48 @@ func (c *Controller) memberChanged(e interface{}) {
 		}
 	} else {
 		interfaceName := util.GenerateContainerInterfaceName(name, namespace, containerID)
+		ifaceConfig := &interfacestore.InterfaceConfig{
+			InterfaceName: interfaceName,
+		}
 		g := &mcastGroupEvent{
 			eType: groupLeave,
-			iface: &interfacestore.InterfaceConfig{
-				InterfaceName: interfaceName,
-			},
+			iface: ifaceConfig,
 		}
 		c.queryGroupCh <- g
-		c.removeLocalInterface(interfaceName)
+		c.removeLocalInterface(ifaceConfig)
 	}
 }
 
 func (c *Controller) syncQueryGroup(stopCh <-chan struct{}) {
+	if c.queryGroupId == 0 {
+		klog.V(2).InfoS("As c.queryGroupId is 0, query group will not be installed")
+		return
+	}
 	for {
 		klog.InfoS("Resync query group")
-		if c.queryGroupId == 0 {
-			klog.V(2).InfoS("As c.queryGroupId is 0, query group will not be installed")
-			return
-		}
 		select {
 		case event := <-c.queryGroupCh:
 			if event.eType == groupJoin {
 				if event.iface != nil {
-					c.queryGroupMember[event.iface.InterfaceName] = event.iface.OFPort
-					err := c.updateQueryGroup("")
+					memberPorts := make([]uint32, 0, len(c.queryGroupMember)+1)
+					for _, port := range c.queryGroupMember {
+						memberPorts = append(memberPorts, port)
+					}
+					memberPorts = append(memberPorts, uint32(event.iface.OFPort))
+					err := c.updateQueryGroup(memberPorts)
 					if err != nil {
 						klog.ErrorS(err, "Failed to update query group for groupJoin")
 					}
+					c.queryGroupMember[event.iface.InterfaceName] = uint32(event.iface.OFPort)
 				}
 			} else if event.eType == groupLeave {
-				err := c.updateQueryGroup(event.iface.InterfaceName)
+				memberPorts := make([]uint32, 0, len(c.queryGroupMember)-1)
+				for ifaceName, port := range c.queryGroupMember {
+					if ifaceName != event.iface.InterfaceName {
+						memberPorts = append(memberPorts, port)
+					}
+				}
+				err := c.updateQueryGroup(memberPorts)
 				if err != nil {
 					klog.ErrorS(err, "Failed to update query group for groupLeave")
 				} else {
@@ -543,14 +552,8 @@ func (c *Controller) syncQueryGroup(stopCh <-chan struct{}) {
 	}
 }
 
-func (c *Controller) updateQueryGroup(staleIface string) error {
+func (c *Controller) updateQueryGroup(memberPorts []uint32) error {
 	groupKey := types.McastAllHosts.String()
-	memberPorts := make([]uint32, 0)
-	for ifaceName, port := range c.queryGroupMember {
-		if ifaceName != staleIface {
-			memberPorts = append(memberPorts, uint32(port))
-		}
-	}
 	// Install OpenFlow group for a new multicast group which has local Pod receivers joined.
 	if err := c.ofClient.InstallIGMPGroup(c.queryGroupId, memberPorts); err != nil {
 		return err
@@ -569,11 +572,13 @@ func (c *Controller) updateQueryGroup(staleIface string) error {
 
 func (c *Controller) initQueryGroup() error {
 	ifaces := c.ifaceStore.GetInterfacesByType(interfacestore.ContainerInterface)
+	ports := make([]uint32, 0, len(ifaces))
 	for _, iface := range ifaces {
-		c.queryGroupMember[iface.InterfaceName] = iface.OFPort
+		c.queryGroupMember[iface.InterfaceName] = uint32(iface.OFPort)
+		ports = append(ports, uint32(iface.OFPort))
 	}
 	if len(c.queryGroupMember) > 0 {
-		err := c.updateQueryGroup("")
+		err := c.updateQueryGroup(ports)
 		if err != nil {
 			klog.ErrorS(err, "Failed to update query group")
 			return err
