@@ -187,8 +187,8 @@ var (
 	// Tables in stageRouting:
 	MulticastRoutingTable = newTable("MulticastRouting", stageRouting, pipelineMulticast)
 	// Tables in stageIngressSecurity
-	MulticastIGMPIngressTable       = newTable("MulticastIGMPIngress", stageIngressSecurity, pipelineMulticast)
-	MulticastIGMPIngressMetricTable = newTable("MulticastIGMPIngressMetric", stageIngressSecurity, pipelineMulticast)
+	MulticastIGMPIngressTable   = newTable("MulticastIGMPIngress", stageIngressSecurity, pipelineMulticast)
+	MulticastIngressMetricTable = newTable("MulticastIGMPIngressMetric", stageIngressSecurity, pipelineMulticast)
 	// Tables in stageOutput
 	MulticastOutputTable = newTable("MulticastOutput", stageOutput, pipelineMulticast)
 
@@ -299,7 +299,7 @@ func GetAntreaIGMPTables() []*Table {
 	return []*Table{
 		MulticastIGMPEgressTable,
 		MulticastIGMPIngressTable,
-		MulticastIGMPIngressMetricTable,
+		MulticastIngressMetricTable,
 	}
 }
 
@@ -312,7 +312,7 @@ func GetAntreaIGMPEgressTables() []*Table {
 func GetAntreaIGMPIngressTables() []*Table {
 	return []*Table{
 		MulticastIGMPIngressTable,
-		MulticastIGMPIngressMetricTable,
+		MulticastIngressMetricTable,
 	}
 }
 
@@ -1633,7 +1633,7 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	if f.isMulticastEgressRule(tableID, ingress, isIGMP) {
 		metricTable = MulticastEgressMetricTable
 	} else if f.isIGMPIngressRule(tableID, ingress, isIGMP) {
-		metricTable = MulticastIGMPIngressMetricTable
+		metricTable = MulticastIngressMetricTable
 	}
 	metricFlow := func(isCTNew bool, protocol binding.Protocol) binding.Flow {
 		return metricTable.ofTable.BuildFlow(priorityNormal).
@@ -1648,7 +1648,7 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	// For IGMP ingress or multicast egress traffic, we need to calculate the packets dropped or allowed by each rule.
 	// Since IGMP and multicast traffic use a different pipeline, we just add flow in MulticastIGMPIngressMetricTable
 	// for IGMP ingress, and add flow in MulticastEgressMetricTable for multicast egress.
-	if isIGMP || f.isMulticastEgressRule(tableID, ingress, isIGMP) {
+	if f.isIGMPIngressRule(tableID, ingress, isIGMP) || f.isMulticastEgressRule(tableID, ingress, isIGMP) {
 		flow := metricTable.ofTable.BuildFlow(priorityNormal).
 			Cookie(f.cookieAllocator.Request(f.category).Raw()).
 			MatchRegMark(CnpDenyRegMark).
@@ -1681,7 +1681,7 @@ func (f *featureNetworkPolicy) denyRuleMetricFlow(conjunctionID uint32, ingress,
 	if f.isMulticastEgressRule(tableID, ingress, isIGMP) {
 		metricTable = MulticastEgressMetricTable
 	} else if f.isIGMPIngressRule(tableID, ingress, isIGMP) {
-		metricTable = MulticastIGMPIngressMetricTable
+		metricTable = MulticastIngressMetricTable
 	}
 	return metricTable.ofTable.BuildFlow(priorityNormal).
 		Cookie(f.cookieAllocator.Request(f.category).Raw()).
@@ -1794,7 +1794,7 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 	// IGMP ingress or multicast egress，conjunctionActionFlow generates the flow
 	// to mark the packet to be allowed if policyRuleConjunction ID is matched.
 	// Any matched flow will be resubmitted to next table in corresponding metric tables.
-	if isIGMP || f.isMulticastEgressRule(tableID, isIngress, isIGMP) {
+	if f.isIGMPIngressRule(tableID, isIngress, isIGMP) || f.isMulticastEgressRule(tableID, isIngress, isIGMP) {
 		flow := table.BuildFlow(ofPriority).MatchConjID(conjunctionID).
 			Action().LoadToRegField(CNPDenyConjIDField, conjunctionID).
 			Action().LoadRegMark(CnpDenyRegMark).Action().GotoTable(table.GetNext()).
@@ -1828,7 +1828,7 @@ func (f *featureNetworkPolicy) conjunctionActionDenyFlow(conjunctionID uint32, t
 	if f.isMulticastEgressRule(tableID, isIngress, isIGMP) {
 		metricTable = MulticastEgressMetricTable
 	} else if f.isIGMPIngressRule(tableID, isIngress, isIGMP) {
-		metricTable = MulticastIGMPIngressMetricTable
+		metricTable = MulticastIngressMetricTable
 	}
 	flowBuilder = flowBuilder.MatchConjID(conjunctionID).
 		Action().LoadToRegField(CNPDenyConjIDField, conjunctionID).

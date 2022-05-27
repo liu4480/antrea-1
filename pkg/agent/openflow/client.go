@@ -1186,8 +1186,11 @@ func (c *client) UninstallTrafficControlReturnPortFlow(returnOFPort uint32) erro
 func (c *client) InstallIGMPGroup(groupID binding.GroupIDType, localReceivers []uint32) error {
 	c.replayMutex.RLock()
 	defer c.replayMutex.RUnlock()
-
-	if err := c.featureMulticast.multicastQueryGroups(groupID, localReceivers...); err != nil {
+	table := MulticastOutputTable
+	if c.enableAntreaPolicy {
+		table = MulticastIGMPIngressTable
+	}
+	if err := c.featureMulticast.multicastReceiversGroup(groupID, table.GetID(), localReceivers...); err != nil {
 		return err
 	}
 	return nil
@@ -1198,7 +1201,7 @@ func (c *client) InstallMulticastGroup(groupID binding.GroupIDType, localReceive
 	defer c.replayMutex.RUnlock()
 
 	targetPorts := append([]uint32{config.HostGatewayOFPort}, localReceivers...)
-	if err := c.featureMulticast.multicastReceiversGroup(groupID, targetPorts...); err != nil {
+	if err := c.featureMulticast.multicastReceiversGroup(groupID, MulticastOutputTable.GetID(), targetPorts...); err != nil {
 		return err
 	}
 	return nil

@@ -1128,16 +1128,7 @@ func (f *featureNetworkPolicy) addRuleToConjunctiveMatch(conj *policyRuleConjunc
 	}
 	if conj.toClause != nil {
 		for _, addr := range rule.To {
-			var match *conjunctiveMatch
-			if rule.IGMPRule {
-				match = &conjunctiveMatch{
-					tableID:    conj.toClause.ruleTable.GetID(),
-					matchPairs: []matchPair{{matchKey: MatchDstOFPort, matchValue: addr.GetValue()}},
-					priority:   rule.Priority,
-				}
-			} else {
-				match = generateAddressConjMatch(conj.toClause.ruleTable.GetID(), addr, types.DstAddress, rule.Priority)
-			}
+			match := generateAddressConjMatch(conj.toClause.ruleTable.GetID(), addr, types.DstAddress, rule.Priority)
 			f.addActionToConjunctiveMatch(conj.toClause, match)
 		}
 	}

@@ -75,33 +75,13 @@ func (f *featureMulticast) replayFlows() []binding.Flow {
 	return getCachedFlows(f.cachedFlows)
 }
 
-func (f *featureMulticast) multicastQueryGroups(groupID binding.GroupIDType, ports ...uint32) error {
-	table := MulticastOutputTable
-	if f.enableAntreaPolicy {
-		table = MulticastIGMPIngressTable
-	}
+func (f *featureMulticast) multicastReceiversGroup(groupID binding.GroupIDType, tableID uint8, ports ...uint32) error {
 	group := f.bridge.CreateGroupTypeAll(groupID).ResetBuckets()
 	for i := range ports {
 		group = group.Bucket().
 			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
 			LoadToRegField(TargetOFPortField, ports[i]).
-			ResubmitToTable(table.GetID()).
-			Done()
-	}
-	if err := group.Add(); err != nil {
-		return fmt.Errorf("error when installing Multicast query Group: %w", err)
-	}
-	f.groupCache.Store(groupID, group)
-	return nil
-}
-
-func (f *featureMulticast) multicastReceiversGroup(groupID binding.GroupIDType, ports ...uint32) error {
-	group := f.bridge.CreateGroupTypeAll(groupID).ResetBuckets()
-	for i := range ports {
-		group = group.Bucket().
-			LoadToRegField(OFPortFoundRegMark.GetField(), OFPortFoundRegMark.GetValue()).
-			LoadToRegField(TargetOFPortField, ports[i]).
-			ResubmitToTable(MulticastOutputTable.GetID()).
+			ResubmitToTable(tableID).
 			Done()
 	}
 	if err := group.Add(); err != nil {

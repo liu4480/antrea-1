@@ -215,7 +215,7 @@ func (f *featureNetworkPolicy) getRequiredTables() []*Table {
 				MulticastEgressRuleTable,
 				MulticastEgressMetricTable,
 				MulticastIGMPIngressTable,
-				MulticastIGMPIngressMetricTable,
+				MulticastIngressMetricTable,
 			)
 		}
 	}

@@ -267,7 +267,7 @@ func TestBuildPipeline(t *testing.T) {
 					MulticastRoutingTable,
 
 					MulticastIGMPIngressTable,
-					MulticastIGMPIngressMetricTable,
+					MulticastIngressMetricTable,
 
 					MulticastOutputTable,
 				},
