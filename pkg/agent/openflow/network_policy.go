@@ -788,7 +788,7 @@ func getServiceMatchPairs(service v1beta2.Service, ipProtocols []binding.Protoco
 		}
 	case v1beta2.ProtocolIGMP:
 		var matchPairs []matchPair
-		if service.IGMPType != nil && *service.IGMPType == crdv1alpha1.IGMPQuery {
+		if service.IGMPType == crdv1alpha1.IGMPQuery {
 			if service.GroupAddress != "" {
 				matchPairs = append(matchPairs, matchPair{matchKey: MatchDstIP, matchValue: net.ParseIP(service.GroupAddress)})
 			} else {

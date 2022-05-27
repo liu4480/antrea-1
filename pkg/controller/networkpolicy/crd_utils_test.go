@@ -109,7 +109,7 @@ func TestToAntreaServicesForCRD(t *testing.T) {
 			protocols: []crdv1alpha1.NetworkPolicyProtocol{
 				{
 					IGMP: &crdv1alpha1.IGMPProtocol{
-						IGMPType:     &igmpQuery,
+						IGMPType:     igmpQuery,
 						GroupAddress: queryStr,
 					},
 				},
@@ -117,7 +117,7 @@ func TestToAntreaServicesForCRD(t *testing.T) {
 			expServices: []controlplane.Service{
 				{
 					Protocol:     &protocolIGMP,
-					IGMPType:     &igmpQuery,
+					IGMPType:     igmpQuery,
 					GroupAddress: queryStr,
 				},
 			},
@@ -126,7 +126,7 @@ func TestToAntreaServicesForCRD(t *testing.T) {
 			protocols: []crdv1alpha1.NetworkPolicyProtocol{
 				{
 					IGMP: &crdv1alpha1.IGMPProtocol{
-						IGMPType:     &igmpReport,
+						IGMPType:     igmpReport,
 						GroupAddress: reportStr,
 					},
 				},
@@ -134,7 +134,7 @@ func TestToAntreaServicesForCRD(t *testing.T) {
 			expServices: []controlplane.Service{
 				{
 					Protocol:     &protocolIGMP,
-					IGMPType:     &igmpReport,
+					IGMPType:     igmpReport,
 					GroupAddress: reportStr,
 				},
 			},

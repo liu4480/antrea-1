@@ -371,8 +371,8 @@ func toIGMPReportGroupAddressIndexFunc(obj interface{}) ([]string, error) {
 	rule := obj.(*rule)
 	mcastGroupAddresses := sets.String{}
 	for _, svc := range rule.Services {
-		if svc.IGMPType != nil && (*svc.IGMPType == crdv1alpha1.IGMPReportV1 || *svc.IGMPType == crdv1alpha1.IGMPReportV2 ||
-			*svc.IGMPType == crdv1alpha1.IGMPReportV3) {
+		if svc.IGMPType == crdv1alpha1.IGMPReportV1 || svc.IGMPType == crdv1alpha1.IGMPReportV2 ||
+			svc.IGMPType == crdv1alpha1.IGMPReportV3 {
 			mcastGroupAddresses.Insert(svc.GroupAddress)
 		}
 	}

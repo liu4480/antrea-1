@@ -635,6 +635,6 @@ type ICMPProtocol struct {
 // IGMPReportV3 int32 = 0x22
 // If groupAddress is empty, all groupAddresses will be matched.
 type IGMPProtocol struct {
-	IGMPType     *int32 `json:"igmpType,omitempty"`
+	IGMPType     int32  `json:"igmpType"`
 	GroupAddress string `json:"groupAddress,omitempty"`
 }

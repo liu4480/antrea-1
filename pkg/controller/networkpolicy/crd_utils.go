@@ -63,12 +63,9 @@ func toAntreaServicesForCRD(npPorts []v1alpha1.NetworkPolicyPort, npProtocols []
 		}
 		if npProtocol.IGMP != nil {
 			curProtocol := controlplane.ProtocolIGMP
-			if npProtocol.IGMP.IGMPType != nil {
-				klog.V(4).InfoS("Get IGMP protocol information", "IGMPType", *npProtocol.IGMP.IGMPType)
-			}
 
-			klog.V(4).InfoS("Get groupAddress ", npProtocol.IGMP.GroupAddress,
-				"IGMPType is nil", npProtocol.IGMP.IGMPType == nil)
+			klog.V(4).InfoS("Get groupAddress", npProtocol.IGMP.GroupAddress,
+				"IGMPType", npProtocol.IGMP.IGMPType)
 
 			antreaServices = append(antreaServices, controlplane.Service{
 				Protocol:     &curProtocol,

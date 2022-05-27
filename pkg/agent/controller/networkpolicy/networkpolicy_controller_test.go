@@ -637,7 +637,7 @@ func TestValidate(t *testing.T) {
 		},
 		Services: []v1beta2.Service{
 			{
-				IGMPType:     &igmpType,
+				IGMPType:     igmpType,
 				GroupAddress: "225.1.2.3",
 			},
 		},
@@ -656,7 +656,7 @@ func TestValidate(t *testing.T) {
 		},
 		Services: []v1beta2.Service{
 			{
-				IGMPType:     &igmpType,
+				IGMPType:     igmpType,
 				GroupAddress: "",
 			},
 		},
