@@ -223,7 +223,6 @@ type Controller struct {
 	mcastGroupTimeout   time.Duration
 	queryGroupId        binding.GroupIDType
 	queryGroupInstalled bool
-	queryGroupMember    map[string]uint32
 }
 
 func NewMulticastController(ofClient openflow.Client,
@@ -258,7 +257,6 @@ func NewMulticastController(ofClient openflow.Client,
 		mcastGroupTimeout:   igmpQueryInterval * 3,
 		queryGroupId:        v4GroupAllocator.Allocate(),
 		queryGroupInstalled: false,
-		queryGroupMember:    make(map[string]uint32),
 	}
 	podUpdateSubscriber.Subscribe(c.memberChanged)
 	return c
@@ -279,7 +277,7 @@ func (c *Controller) Initialize() error {
 		klog.ErrorS(err, "Failed to install multicast initial flows")
 		return err
 	}
-	err = c.initQueryGroup()
+	err = c.updateQueryGroup()
 	if err != nil {
 		return err
 	}
@@ -518,35 +516,26 @@ func (c *Controller) syncQueryGroup(event *mcastGroupEvent) {
 	switch event.eType {
 	case groupJoin:
 		if event.iface != nil {
-			memberPorts := make([]uint32, 0, len(c.queryGroupMember)+1)
-			for _, port := range c.queryGroupMember {
-				memberPorts = append(memberPorts, port)
-			}
-			memberPorts = append(memberPorts, uint32(event.iface.OFPort))
-			err := c.updateQueryGroup(memberPorts)
+			err := c.updateQueryGroup()
 			if err != nil {
 				klog.ErrorS(err, "Failed to update query group for groupJoin")
 			}
-			c.queryGroupMember[event.iface.InterfaceName] = uint32(event.iface.OFPort)
 		}
 	case groupLeave:
-		memberPorts := make([]uint32, 0, len(c.queryGroupMember)-1)
-		for ifaceName, port := range c.queryGroupMember {
-			if ifaceName != event.iface.InterfaceName {
-				memberPorts = append(memberPorts, port)
-			}
-		}
-		err := c.updateQueryGroup(memberPorts)
+		err := c.updateQueryGroup()
 		if err != nil {
 			klog.ErrorS(err, "Failed to update query group for groupLeave")
-		} else {
-			delete(c.queryGroupMember, event.iface.InterfaceName)
 		}
 	default:
 	}
 }
 
-func (c *Controller) updateQueryGroup(memberPorts []uint32) error {
+func (c *Controller) updateQueryGroup() error {
+	ifaces := c.ifaceStore.GetInterfacesByType(interfacestore.ContainerInterface)
+	memberPorts := make([]uint32, 0, len(ifaces))
+	for _, iface := range ifaces {
+		memberPorts = append(memberPorts, uint32(iface.OFPort))
+	}
 	groupKey := types.McastAllHosts.String()
 	// Install OpenFlow group for a new multicast group which has local Pod receivers joined.
 	if err := c.ofClient.InstallIGMPGroup(c.queryGroupId, memberPorts); err != nil {
@@ -560,23 +549,6 @@ func (c *Controller) updateQueryGroup(memberPorts []uint32) error {
 			return err
 		}
 		c.queryGroupInstalled = true
-	}
-	return nil
-}
-
-func (c *Controller) initQueryGroup() error {
-	ifaces := c.ifaceStore.GetInterfacesByType(interfacestore.ContainerInterface)
-	ports := make([]uint32, 0, len(ifaces))
-	for _, iface := range ifaces {
-		c.queryGroupMember[iface.InterfaceName] = uint32(iface.OFPort)
-		ports = append(ports, uint32(iface.OFPort))
-	}
-	if len(c.queryGroupMember) > 0 {
-		err := c.updateQueryGroup(ports)
-		if err != nil {
-			klog.ErrorS(err, "Failed to update query group")
-			return err
-		}
 	}
 	return nil
 }

@@ -188,7 +188,7 @@ var (
 	MulticastRoutingTable = newTable("MulticastRouting", stageRouting, pipelineMulticast)
 	// Tables in stageIngressSecurity
 	MulticastIGMPIngressTable   = newTable("MulticastIGMPIngress", stageIngressSecurity, pipelineMulticast)
-	MulticastIngressMetricTable = newTable("MulticastIGMPIngressMetric", stageIngressSecurity, pipelineMulticast)
+	MulticastIngressMetricTable = newTable("MulticastIngressMetric", stageIngressSecurity, pipelineMulticast)
 	// Tables in stageOutput
 	MulticastOutputTable = newTable("MulticastOutput", stageOutput, pipelineMulticast)
 
@@ -1646,7 +1646,7 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	}
 	var flows []binding.Flow
 	// For IGMP ingress or multicast egress traffic, we need to calculate the packets dropped or allowed by each rule.
-	// Since IGMP and multicast traffic use a different pipeline, we just add flow in MulticastIGMPIngressMetricTable
+	// Since IGMP and multicast traffic use a different pipeline, we just add flow in MulticastIngressMetricTable
 	// for IGMP ingress, and add flow in MulticastEgressMetricTable for multicast egress.
 	if f.isIGMPIngressRule(tableID, ingress, isIGMP) || f.isMulticastEgressRule(tableID, ingress, isIGMP) {
 		flow := metricTable.ofTable.BuildFlow(priorityNormal).
