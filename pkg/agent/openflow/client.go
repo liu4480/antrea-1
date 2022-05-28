@@ -293,8 +293,7 @@ type Client interface {
 	// UninstallTrafficControlReturnPortFlow removes the flow to classify the packets from a return port.
 	UninstallTrafficControlReturnPortFlow(returnOFPort uint32) error
 
-	InstallIGMPGroup(groupID binding.GroupIDType,
-		localReceivers []uint32) error
+	InstallIGMPGroup(groupID binding.GroupIDType, localReceivers []uint32) error
 
 	InstallMulticastGroup(ofGroupID binding.GroupIDType, localReceivers []uint32) error
 }

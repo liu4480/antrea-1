@@ -113,7 +113,7 @@ func TestUpdateGroupMemberStatus(t *testing.T) {
 		iface: if1,
 	}
 	mctrl.addGroupMemberStatus(event)
-	mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, uint32(0), gomock.Any()).Times(len(queryVersions))
+	mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, uint32(openflow13.P_TABLE), gomock.Any()).Times(len(queryVersions))
 	for _, e := range []*mcastGroupEvent{
 		{group: mgroup, eType: groupJoin, time: event.time.Add(time.Second * 20), iface: if1},
 		{group: mgroup, eType: groupJoin, time: event.time.Add(time.Second * 40), iface: if1},
@@ -161,7 +161,7 @@ func TestCheckLastMember(t *testing.T) {
 		}
 		_ = mctrl.groupCache.Add(status)
 		mctrl.addInstalledGroup(status.group.String())
-		mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, uint32(0), gomock.Any()).AnyTimes()
+		mockOFClient.EXPECT().SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, uint32(openflow13.P_TABLE), gomock.Any()).AnyTimes()
 		var wg sync.WaitGroup
 		wg.Add(1)
 		go func() {
@@ -372,6 +372,8 @@ func newMockMulticastController(t *testing.T) *Controller {
 
 func (c *Controller) initialize(t *testing.T) error {
 	mockOFClient.EXPECT().InstallMulticastInitialFlows(uint8(0)).Times(1)
+	mockOFClient.EXPECT().InstallIGMPGroup(gomock.Any(), gomock.Any())
+	mockOFClient.EXPECT().InstallMulticastFlows(gomock.Any(), gomock.Any())
 	mockIfaceStore.EXPECT().GetInterfacesByType(interfacestore.InterfaceType(0)).Times(1).Return([]*interfacestore.InterfaceConfig{})
 	mockMulticastSocket.EXPECT().AllocateVIFs(gomock.Any(), uint16(0)).Times(1).Return([]uint16{0}, nil)
 	mockMulticastSocket.EXPECT().AllocateVIFs(gomock.Any(), uint16(1)).Times(1).Return([]uint16{1, 2}, nil)

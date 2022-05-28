@@ -211,11 +211,3 @@ func GetLocalBroadcastIP(ipNet *net.IPNet) net.IP {
 	binary.BigEndian.PutUint32(lastAddr, binary.BigEndian.Uint32(ipNet.IP.To4())|^binary.BigEndian.Uint32(net.IP(ipNet.Mask).To4()))
 	return lastAddr
 }
-
-func IPv4StrToIPNet(s string) net.IPNet {
-	ip := net.IPNet{
-		IP:   net.ParseIP(s),
-		Mask: net.CIDRMask(32, 32),
-	}
-	return ip
-}

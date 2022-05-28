@@ -423,6 +423,10 @@ func (v *antreaPolicyValidator) createValidate(curObj interface{}, userInfo auth
 	if !allowed {
 		return reason, allowed
 	}
+	reason, allowed = v.validateIngressMulticastAddress(ingress)
+	if !allowed {
+		return reason, allowed
+	}
 	reason, allowed = v.validateMulticastIGMP(ingress, egress)
 	if !allowed {
 		return reason, allowed
@@ -660,6 +664,24 @@ func (v *antreaPolicyValidator) validateEgressMulticastAddress(egressRule []crdv
 	return "", true
 }
 
+func (v *antreaPolicyValidator) validateIngressMulticastAddress(ingressRule []crdv1alpha1.Rule) (string, bool) {
+	for _, r := range ingressRule {
+		for _, from := range r.From {
+			if from.IPBlock == nil {
+				continue
+			}
+			fromIPAddr, _, err := net.ParseCIDR(from.IPBlock.CIDR)
+			if err != nil {
+				return fmt.Sprintf("invalid multicast groupAddress address (to.IPBlock.CIDR): %v", err.Error()), false
+			}
+			if fromIPAddr.IsMulticast() {
+				return fmt.Sprintf("multicast is not support in ingress rule"), false
+			}
+		}
+	}
+	return "", true
+}
+
 func igmpValidation(protocol crdv1alpha1.NetworkPolicyProtocol) (string, bool) {
 	if protocol.IGMP.GroupAddress == "" {
 		return "", true
@@ -736,6 +758,10 @@ func (v *antreaPolicyValidator) updateValidate(curObj, oldObj interface{}, userI
 		return reason, allowed
 	}
 	reason, allowed = v.validateEgressMulticastAddress(egress)
+	if !allowed {
+		return reason, allowed
+	}
+	reason, allowed = v.validateIngressMulticastAddress(ingress)
 	if !allowed {
 		return reason, allowed
 	}

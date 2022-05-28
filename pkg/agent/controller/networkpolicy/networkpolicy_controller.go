@@ -513,10 +513,7 @@ func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP,
 	if matchedRule != nil {
 		ruleTypePtr = new(v1beta2.NetworkPolicyType)
 		action, uuid, *ruleTypePtr, ruleName = *matchedRule.Action, matchedRule.PolicyUID, matchedRule.SourceRef.Type, matchedRule.Name
-	} else {
-		action, uuid, ruleName = v1alpha1.RuleActionAllow, "", ""
 	}
-	klog.V(2).InfoS("Call validation:", "action", action, "uuid", uuid, "ruleName", ruleName, "ruleType", ruleTypePtr)
 	return types.McastNPValidationItem{
 		RuleAction: &action,
 		UUID:       uuid,

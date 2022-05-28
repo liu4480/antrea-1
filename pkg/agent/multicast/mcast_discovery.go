@@ -99,11 +99,13 @@ func (s *IGMPSnooper) queryIGMP(group net.IP, versions []uint8) error {
 		if err != nil {
 			return err
 		}
-		outPort := uint32(0)
-		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, outPort, igmp); err != nil {
+		//
+		// outPort sets the output port of the packetOut message. If the message is expected to go through OVS pipeline
+		// from table0, use openflow13.P_TABLE, which is also the default value.
+		if err := s.ofClient.SendIGMPQueryPacketOut(igmpQueryDstMac, types.McastAllHosts, openflow13.P_TABLE, igmp); err != nil {
 			return err
 		}
-		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version, "outPort", outPort)
+		klog.V(2).InfoS("Sent packetOut for IGMP query", "group", group.String(), "version", version, "outPort", openflow13.P_TABLE)
 	}
 	return nil
 }
@@ -113,23 +115,22 @@ func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
 		// Do not need to validate if the packet should be dropped since Validator is null, thus here returns directly
 		return true, nil
 	}
-	if event.iface.Type == interfacestore.ContainerInterface {
-		item, err := s.validator.Validate(event.iface.PodName, event.iface.PodNamespace, event.group)
-		klog.V(2).InfoS("call function s.Validator.Validate", "podName", event.iface.PodName,
-			"podNamespace", event.iface.PodNamespace, "mgroup", event.group.String())
-		if err != nil {
-			// Here just checks if packet should be dropped or not, Validate will return error when it fails to call ByIndex.
-			// We just imagine there is no rule for the pod(event.iface.PodName, event.iface.PodNamespace) to groupAddress event.group.
-			klog.ErrorS(err, "s.Validator.Validate returned")
-			return true, err
-		}
-		if item.RuleAction != nil {
-			klog.V(2).InfoS("s.Validator.Validate returned value", "RuleAction", *item.RuleAction,
-				"uuid", item.UUID, "Name", item.Name)
-		}
-		if item.RuleAction != nil && *item.RuleAction == v1alpha1.RuleActionDrop {
-			return false, nil
-		}
+	if event.iface.Type != interfacestore.ContainerInterface {
+		return true, fmt.Errorf("interface is not container")
+	}
+	// Validates check if packet should be dropped or not, and return multicast NP information
+	item, err := s.validator.Validate(event.iface.PodName, event.iface.PodNamespace, event.group)
+	if err != nil {
+		// It shall drop the packet if function Validate returns error
+		klog.ErrorS(err, "Function Validate returned")
+		return false, err
+	}
+	if item.RuleAction != nil {
+		klog.V(2).InfoS("Got NetworkPolicy action for IGMP query", "RuleAction", *item.RuleAction,
+			"uuid", item.UUID, "Name", item.Name)
+	}
+	if item.RuleAction != nil && *item.RuleAction == v1alpha1.RuleActionDrop {
+		return false, nil
 	}
 	return true, nil
 }
@@ -272,8 +273,8 @@ func parseIGMPPacket(pkt protocol.Ethernet) (protocol.IGMPMessage, error) {
 	}
 }
 
-func newSnooper(ofClient openflow.Client, ifaceStore interfacestore.InterfaceStore, eventCh chan *mcastGroupEvent, queryInterval time.Duration, Validator types.MulticastValidator) *IGMPSnooper {
-	d := &IGMPSnooper{ofClient: ofClient, ifaceStore: ifaceStore, eventCh: eventCh, queryInterval: queryInterval, validator: Validator}
+func newSnooper(ofClient openflow.Client, ifaceStore interfacestore.InterfaceStore, eventCh chan *mcastGroupEvent, queryInterval time.Duration, validator types.MulticastValidator) *IGMPSnooper {
+	d := &IGMPSnooper{ofClient: ofClient, ifaceStore: ifaceStore, eventCh: eventCh, queryInterval: queryInterval, validator: validator}
 	ofClient.RegisterPacketInHandler(uint8(openflow.PacketInReasonMC), "MulticastGroupDiscovery", d)
 	return d
 }

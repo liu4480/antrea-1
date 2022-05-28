@@ -292,8 +292,7 @@ type Service struct {
 	ICMPType *int32 `json:"icmpType,omitempty" protobuf:"bytes,4,opt,name=icmpType"`
 	ICMPCode *int32 `json:"icmpCode,omitempty" protobuf:"bytes,5,opt,name=icmpCode"`
 	// IGMPType and GroupAddress can only be specified when the Protocol is IGMP.
-	// +optional
-	IGMPType     int32  `json:"igmpType,omitempty" protobuf:"bytes,6,opt,name=igmpType"`
+	IGMPType     int32  `json:"igmpType" protobuf:"varint,6,opt,name=igmpType"`
 	GroupAddress string `json:"groupAddress,omitempty" protobuf:"bytes,7,opt,name=groupAddress"`
 }
 

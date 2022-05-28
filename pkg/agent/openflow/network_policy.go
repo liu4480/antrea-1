@@ -59,6 +59,7 @@ var (
 	MatchICMPv6Type     = types.NewMatchKey(binding.ProtocolICMPv6, types.ICMPAddr, "icmpv6_type")
 	MatchICMPv6Code     = types.NewMatchKey(binding.ProtocolICMPv6, types.ICMPAddr, "icmpv6_code")
 	MatchServiceGroupID = types.NewMatchKey(binding.ProtocolIP, types.ServiceGroupIDAddr, "reg7[0..31]")
+	MatchIGMPProtocol   = types.NewMatchKey(binding.ProtocolIGMP, types.IGMPAddr, "igmp")
 	Unsupported         = types.NewMatchKey(binding.ProtocolIP, types.UnSupported, "unknown")
 
 	// metricFlowIdentifier is used to identify metric flows in metric table.
@@ -789,13 +790,16 @@ func getServiceMatchPairs(service v1beta2.Service, ipProtocols []binding.Protoco
 	case v1beta2.ProtocolIGMP:
 		var matchPairs []matchPair
 		if service.IGMPType == crdv1alpha1.IGMPQuery {
+			// IGMP query is working on 224.0.0.1, and for IGMP v1/v2, agent will send queries to all group addresses.
+			// For IGMP v3, it support query specific group, for example query member in "225.1.2.3", which is encoded
+			// in IGMP message. As ovs does not recognize the address, IGMP query only work. So IGMP query is now working
+			// on 224.0.0.1
 			if service.GroupAddress != "" {
 				matchPairs = append(matchPairs, matchPair{matchKey: MatchDstIP, matchValue: net.ParseIP(service.GroupAddress)})
 			} else {
-				// We think empty group address means all group addresses. But since OVS does not recognize query group address in IGMP message.
-				// So IGMP query is only working on 224.0.0.1, and set group address as 224.0.0.1.
 				matchPairs = append(matchPairs, matchPair{matchKey: MatchDstIP, matchValue: types.McastAllHosts})
 			}
+			matchPairs = append(matchPairs, matchPair{matchKey: MatchIGMPProtocol, matchValue: crdv1alpha1.IGMPProtocolNumber})
 			conjMatchesMatchPairs = append(conjMatchesMatchPairs, matchPairs)
 		}
 	default:
@@ -1005,25 +1009,10 @@ func (c *client) InstallPolicyRuleFlows(rule *types.PolicyRule) error {
 
 // For multicast traffic, we support ingress rules for IGMP, and egress rules for multicast data traffic.
 // Ingress rules for IGMP packets are enforced by the packetIn handler.
-// Check is the rule is egress for IGMP, caller will return empty flow if it is.
-func (f *featureNetworkPolicy) isIGMPEgressRule(tableID uint8, isIngress, isIGMP bool) bool {
-	// If multicast is enabled, and the rule is IGMP and egress rule, this function will return true.
-	// Otherwise, it will return false.
-	if f.enableMulticast && !isIngress && isIGMP {
-		return true
-	}
-	return false
-}
-
-// For multicast traffic, we support ingress rules for IGMP, and egress rules for multicast data traffic.
-// Ingress rules for IGMP packets are enforced by the packetIn handler.
 // Check if the rule is ingress for IGMP, caller will generate conjunction flows if it is.
 func (f *featureNetworkPolicy) isIGMPIngressRule(tableID uint8, isIngress, isIGMP bool) bool {
-	// If multicast is enabled, and the rule is IGMP and ingress, and table is MulticastIGMPIngressTable,
-	// this function will return true.
-	// Otherwise, it will return false.
 	if f.enableMulticast && isIngress && isIGMP {
-		return true
+		return tableID == MulticastIGMPIngressTable.GetID()
 	}
 	return false
 }
@@ -1032,22 +1021,8 @@ func (f *featureNetworkPolicy) isIGMPIngressRule(tableID uint8, isIngress, isIGM
 // Ingress rules for IGMP packets are enforced by the packetIn handler.
 // Check if the rule is egress for multicast traffic, caller will generate conjunction flows if it is
 func (f *featureNetworkPolicy) isMulticastEgressRule(tableID uint8, isIngress, isIGMP bool) bool {
-	// If multicast is enabled, and the rule it is egress and table is MulticastEgressRuleTable,
-	// but it is not IGMP, the rule is egress for multicast udp traffic.
-	// Otherwise, it is not.
 	if f.enableMulticast && !isIngress && !isIGMP {
 		return tableID == MulticastEgressRuleTable.GetID()
-	}
-	return false
-}
-
-// For multicast traffic, we support ingress rules for IGMP, and egress rules for multicast data traffic.
-// Ingress rules for IGMP packets are enforced by the packetIn handler.
-// Check if the rule is ingress for multicast traffic, caller will return empty flow if it is
-func (f *featureNetworkPolicy) isMulticastIngressRule(tableID uint8, isIngress, isIGMP bool) bool {
-	// Currently ingress rules for multicast traffic are not supported, we set the tableID to 0 to mark it.
-	if tableID == 0 {
-		return true
 	}
 	return false
 }
@@ -1078,30 +1053,16 @@ func (f *featureNetworkPolicy) calculateActionFlowChangesForRule(rule *types.Pol
 		var actionFlows []binding.Flow
 		var metricFlows []binding.Flow
 		if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionDrop {
-			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); metricFlow != nil {
-				metricFlows = append(metricFlows, metricFlow)
-			}
-			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging, isIngress, rule.IGMPRule); actionFlow != nil {
-				actionFlows = append(actionFlows, actionFlow)
-			}
+			metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID))
+			actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionDrop, rule.EnableLogging, isIngress, rule.IGMPRule))
 		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionReject {
-			if metricFlow := f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); metricFlow != nil {
-				metricFlows = append(metricFlows, metricFlow)
-			}
-			if actionFlow := f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging, isIngress, rule.IGMPRule); actionFlow != nil {
-				actionFlows = append(actionFlows, actionFlow)
-			}
+			metricFlows = append(metricFlows, f.denyRuleMetricFlow(ruleOfID, isIngress, rule.IGMPRule, rule.TableID))
+			actionFlows = append(actionFlows, f.conjunctionActionDenyFlow(ruleOfID, ruleTable, rule.Priority, DispositionRej, rule.EnableLogging, isIngress, rule.IGMPRule))
 		} else if rule.IsAntreaNetworkPolicyRule() && *rule.Action == crdv1alpha1.RuleActionPass {
-			if actionFlow := f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging); actionFlow != nil {
-				actionFlows = append(actionFlows, actionFlow)
-			}
+			actionFlows = append(actionFlows, f.conjunctionActionPassFlow(ruleOfID, ruleTable, rule.Priority, rule.EnableLogging))
 		} else {
-			if allowMetricFlows := f.allowRulesMetricFlows(ruleOfID, isIngress, rule.IGMPRule, rule.TableID); len(allowMetricFlows) > 0 {
-				metricFlows = append(metricFlows, allowMetricFlows...)
-			}
-			if allowActionFlows := f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging, isIngress, rule.IGMPRule); len(allowActionFlows) > 0 {
-				actionFlows = append(actionFlows, allowActionFlows...)
-			}
+			metricFlows = append(metricFlows, f.allowRulesMetricFlows(ruleOfID, isIngress, rule.IGMPRule, rule.TableID)...)
+			actionFlows = append(actionFlows, f.conjunctionActionFlow(ruleOfID, ruleTable, dropTable.GetNext(), rule.Priority, rule.EnableLogging, isIngress, rule.IGMPRule)...)
 		}
 		conj.actionFlows = actionFlows
 		conj.metricFlows = metricFlows

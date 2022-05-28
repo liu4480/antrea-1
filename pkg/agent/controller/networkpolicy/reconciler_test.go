@@ -215,7 +215,7 @@ func TestReconcilerReconcile(t *testing.T) {
 	ipNet2 := newCIDR("10.20.0.0/16")
 	ipNet3 := newCIDR("10.20.1.0/24")
 	ipNet4 := newCIDR("10.20.2.0/28")
-	ipNet5 := newCIDR("234.10.10.100/4")
+	ipNet5 := newCIDR("234.10.10.100/32")
 	diffNet1 := newCIDR("10.20.128.0/17")
 	diffNet2 := newCIDR("10.20.64.0/18")
 	diffNet3 := newCIDR("10.20.32.0/19")
@@ -532,7 +532,7 @@ func TestReconcilerReconcile(t *testing.T) {
 					SourceRef: &np1,
 				},
 				FromAddresses: nil,
-				ToAddresses:   addressGroup1,
+				ToAddresses:   nil,
 				TargetMembers: appliedToGroup1,
 			},
 			[]*types.PolicyRule{
@@ -540,7 +540,7 @@ func TestReconcilerReconcile(t *testing.T) {
 					Direction: v1beta2.DirectionOut,
 					From:      ipsToOFAddresses(sets.NewString("2.2.2.2")),
 					To: []types.Address{
-						openflow.NewIPAddress(net.ParseIP("224.10.10.100")),
+						openflow.NewIPNetAddress(*ipNet5),
 					},
 					Service:   nil,
 					PolicyRef: &np1,

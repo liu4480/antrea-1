@@ -1882,6 +1882,7 @@ func schema_pkg_apis_controlplane_v1beta2_Service(ref common.ReferenceCallback) 
 					"igmpType": {
 						SchemaProps: spec.SchemaProps{
 							Description: "IGMPType and GroupAddress can only be specified when the Protocol is IGMP.",
+							Default:     0,
 							Type:        []string{"integer"},
 							Format:      "int32",
 						},
@@ -1893,6 +1894,7 @@ func schema_pkg_apis_controlplane_v1beta2_Service(ref common.ReferenceCallback) 
 						},
 					},
 				},
+				Required: []string{"igmpType"},
 			},
 		},
 		Dependencies: []string{

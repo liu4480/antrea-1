@@ -325,7 +325,7 @@ func (r *reconciler) getRuleType(rule *CompletedRule) ruleType {
 		return unicast
 	}
 	for _, service := range rule.Services {
-		if service.Protocol != nil && (*service.Protocol == v1beta2.ProtocolIGMP) {
+		if service.Protocol != nil && *service.Protocol == v1beta2.ProtocolIGMP {
 			return igmp
 		}
 	}
@@ -366,11 +366,10 @@ func (r *reconciler) getOFRuleTable(rule *CompletedRule) uint8 {
 	case igmp:
 		if rule.Direction == v1beta2.DirectionIn {
 			ruleTables = openflow.GetAntreaIGMPIngressTables()
-			tableID = ruleTables[0].GetID()
 		} else {
 			ruleTables = openflow.GetAntreaIGMPEgressTables()
-			tableID = ruleTables[0].GetID()
 		}
+		tableID = ruleTables[0].GetID()
 
 	case multicast:
 		// Multicast NetworkPolicy only supports egress so far, we leave tableID as 0
@@ -520,13 +519,12 @@ func (r *reconciler) computeOFRulesForAdd(rule *CompletedRule, ofPriority *uint1
 	isIGMP := r.isIGMPRule(rule)
 	if isIGMP && rule.Direction == v1beta2.DirectionIn {
 		// IGMP query
-		svcKey := servicesKey(igmpServicesKey)
 		ofPorts := r.getOFPorts(rule.TargetMembers)
-		lastRealized.podOFPorts[svcKey] = ofPorts
-		ofRuleByServicesMap[svcKey] = &types.PolicyRule{
+		lastRealized.podOFPorts[igmpServicesKey] = ofPorts
+		ofRuleByServicesMap[igmpServicesKey] = &types.PolicyRule{
 			Direction:     v1beta2.DirectionIn,
 			To:            ofPortsToOFAddresses(ofPorts),
-			Service:       filterUnresolvablePort(rule.Services),
+			Service:       rule.Services,
 			Action:        rule.Action,
 			Name:          rule.Name,
 			Priority:      ofPriority,
@@ -706,15 +704,14 @@ func (r *reconciler) update(lastRealized *lastRealized, newRule *CompletedRule, 
 	isIGMP := r.isIGMPRule(newRule)
 	if isIGMP && newRule.Direction == v1beta2.DirectionIn {
 		// IGMP query
-		svcKey := servicesKey(igmpServicesKey)
 		newOFPorts := r.getOFPorts(newRule.TargetMembers)
-		ofID, exists := lastRealized.ofIDs[svcKey]
+		ofID, exists := lastRealized.ofIDs[igmpServicesKey]
 		// Install a new Openflow rule if this group doesn't exist, otherwise do incremental update.
 		if !exists {
 			ofRule := &types.PolicyRule{
 				Direction:     v1beta2.DirectionIn,
 				To:            ofPortsToOFAddresses(newOFPorts),
-				Service:       filterUnresolvablePort(newRule.Services),
+				Service:       newRule.Services,
 				Action:        newRule.Action,
 				Priority:      ofPriority,
 				FlowID:        ofID,
@@ -730,17 +727,15 @@ func (r *reconciler) update(lastRealized *lastRealized, newRule *CompletedRule, 
 			if err = r.installOFRule(ofRule); err != nil {
 				return err
 			}
-			lastRealized.ofIDs[svcKey] = ofRule.FlowID
+			lastRealized.ofIDs[igmpServicesKey] = ofRule.FlowID
 		} else {
-			addedTo := ofPortsToOFAddresses(newOFPorts.Difference(lastRealized.podOFPorts[svcKey]))
-			deletedTo := ofPortsToOFAddresses(lastRealized.podOFPorts[svcKey].Difference(newOFPorts))
-			if err := r.updateOFRule(ofID, []types.Address{}, addedTo, []types.Address{}, deletedTo, ofPriority); err != nil {
+			addedTo := ofPortsToOFAddresses(newOFPorts.Difference(lastRealized.podOFPorts[igmpServicesKey]))
+			deletedTo := ofPortsToOFAddresses(lastRealized.podOFPorts[igmpServicesKey].Difference(newOFPorts))
+			if err := r.updateOFRule(ofID, nil, addedTo, nil, deletedTo, ofPriority); err != nil {
 				return err
 			}
-			// Delete valid servicesKey from staleOFIDs.
-			delete(staleOFIDs, svcKey)
 		}
-		lastRealized.podOFPorts[svcKey] = newOFPorts
+		lastRealized.podOFPorts[igmpServicesKey] = newOFPorts
 		return nil
 	} else if isIGMP {
 		// IGMP report
@@ -1009,7 +1004,6 @@ func (r *reconciler) isIGMPRule(rule *CompletedRule) bool {
 		(*rule.Services[0].Protocol == v1beta2.ProtocolIGMP) {
 		isIGMP = true
 	}
-	klog.V(2).InfoS("Call isIGMPRule and return", "isIGMP", isIGMP)
 	return isIGMP
 }
 
