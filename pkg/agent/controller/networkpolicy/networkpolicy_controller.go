@@ -484,6 +484,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	<-stopCh
 }
 
+// validate checks if there is rule to drop or allow IGMP report from a Pod to a group Address, and returns multicast
+// NetworkPolicy Information
 func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP, direction v1beta2.Direction) (types.McastNPValidationItem, error) {
 	var ruleTypePtr *v1beta2.NetworkPolicyType
 	action, uuid, ruleName := v1alpha1.RuleActionAllow, apitypes.UID(""), ""

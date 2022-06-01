@@ -137,10 +137,18 @@ func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
 }
 
 func (s *IGMPSnooper) validatePacketAndNotify(event *mcastGroupEvent) {
-	allow, _ := s.validate(event)
-	if allow {
-		s.eventCh <- event
+	allow, err := s.validate(event)
+	if err != nil {
+		// Antrea Agent does not remove the Pod from the OpenFlow group bucket directly,
+		// but it will be removed when after timeout (Controller.mcastGroupTimeout)
+		return
 	}
+	if !allow {
+		// If there is rule to drop the traffic, agent will remove the pod from from
+		// the OpenFlow group bucket directly
+		event.eType = groupLeave
+	}
+	s.eventCh <- event
 }
 
 func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
