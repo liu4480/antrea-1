@@ -514,12 +514,12 @@ func (c *Controller) updateQueryGroup() error {
 	for _, iface := range ifaces {
 		memberPorts = append(memberPorts, uint32(iface.OFPort))
 	}
-	groupKey := types.McastAllHosts.String()
 	// Install OpenFlow group for a new multicast group which has local Pod receivers joined.
 	if err := c.ofClient.InstallIGMPGroup(c.queryGroupId, memberPorts); err != nil {
 		return err
 	}
-	klog.V(2).InfoS("Installed OpenFlow group for local receivers", "group", groupKey, "ofGroup", c.queryGroupId, "localReceivers", memberPorts)
+	klog.V(2).InfoS("Installed OpenFlow group for local receivers", "group", types.McastAllHosts.String(),
+		"ofGroup", c.queryGroupId, "localReceivers", memberPorts)
 	return nil
 }
 

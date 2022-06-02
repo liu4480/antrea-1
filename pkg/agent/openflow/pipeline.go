@@ -298,7 +298,6 @@ func GetAntreaIGMPTables() []*Table {
 	return []*Table{
 		MulticastIGMPEgressTable,
 		MulticastIGMPIngressTable,
-		MulticastIngressMetricTable,
 	}
 }
 
@@ -1636,7 +1635,7 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	if metricTable == MulticastEgressMetricTable || metricTable == MulticastIngressMetricTable {
 		flow := metricTable.ofTable.BuildFlow(priorityNormal).
 			Cookie(f.cookieAllocator.Request(f.category).Raw()).
-			MatchRegMark(CnpAllowRegmark).
+			MatchRegMark(DispositionAllowRegMark).
 			MatchRegFieldWithValue(CNPConjIDField, conjunctionID).
 			Action().GotoTable(metricTable.GetNext()).
 			Done()
@@ -1772,7 +1771,7 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 	if f.enableMulticast && (tableID == MulticastEgressRuleTable.GetID() || tableID == MulticastIGMPIngressTable.GetID()) {
 		flow := table.BuildFlow(ofPriority).MatchConjID(conjunctionID).
 			Action().LoadToRegField(CNPConjIDField, conjunctionID).
-			Action().LoadRegMark(CnpAllowRegmark).Action().GotoTable(table.GetNext()).
+			Action().LoadRegMark(DispositionAllowRegMark).Action().NextTable().
 			Cookie(f.cookieAllocator.Request(f.category).Raw()).
 			Done()
 		flows = append(flows, flow)

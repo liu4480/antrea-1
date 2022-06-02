@@ -126,10 +126,7 @@ func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
 		klog.ErrorS(err, "Failed to validate multicast group event")
 		return false, err
 	}
-	if item.RuleAction != "" {
-		klog.V(2).InfoS("Got NetworkPolicy action for IGMP query", "RuleAction", item.RuleAction,
-			"uuid", item.UUID, "Name", item.Name)
-	}
+	klog.V(2).InfoS("Got NetworkPolicy action for IGMP query", "RuleAction", item.RuleAction, "uuid", item.UUID, "Name", item.Name)
 	if item.RuleAction == v1alpha1.RuleActionDrop {
 		return false, nil
 	}
@@ -139,12 +136,12 @@ func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
 func (s *IGMPSnooper) validatePacketAndNotify(event *mcastGroupEvent) {
 	allow, err := s.validate(event)
 	if err != nil {
-		// Antrea Agent does not remove the Pod from the OpenFlow group bucket directly,
+		// Antrea Agent does not remove the Pod from the OpenFlow group bucket immediately when an error is returned,
 		// but it will be removed when after timeout (Controller.mcastGroupTimeout)
 		return
 	}
 	if !allow {
-		// If there is rule to drop the traffic, agent will remove the pod from from
+		// If any rule is desired to drop the traffic, Antrea Agent removes the Pod from from
 		// the OpenFlow group bucket directly
 		event.eType = groupLeave
 	}
