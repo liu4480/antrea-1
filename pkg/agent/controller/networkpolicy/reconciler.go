@@ -297,7 +297,7 @@ func (r *reconciler) Reconcile(rule *CompletedRule) error {
 	value, exists := r.lastRealizeds.Load(rule.ID)
 	ruleTable := r.getOFRuleTable(rule)
 	priorityAssigner, _ := r.priorityAssigners[ruleTable]
-	if rule.isAntreaNetworkPolicyRule() {
+	if rule.isAntreaNetworkPolicyRule() && !rule.isIGMPEgressPolicyRule() {
 		// For CNP, only release priorityMutex after rule is installed on OVS. Otherwise,
 		// priority re-assignments for flows that have already been assigned priorities but
 		// not yet installed on OVS will be missed.
@@ -364,11 +364,9 @@ func (r *reconciler) getOFRuleTable(rule *CompletedRule) uint8 {
 		}
 		tableID = ruleTables[1].GetID()
 	case igmp:
-		ruleTables = openflow.GetAntreaIGMPTables()
 		if rule.Direction == v1beta2.DirectionIn {
+			ruleTables = openflow.GetAntreaIGMPTables()
 			tableID = ruleTables[0].GetID()
-		} else {
-			tableID = ruleTables[1].GetID()
 		}
 	case multicast:
 		// Multicast NetworkPolicy only supports egress so far, we leave tableID as 0
@@ -384,7 +382,7 @@ func (r *reconciler) getOFRuleTable(rule *CompletedRule) uint8 {
 // getOFPriority retrieves the OFPriority for the input CompletedRule to be installed,
 // and re-arranges installed priorities on OVS if necessary.
 func (r *reconciler) getOFPriority(rule *CompletedRule, tableID uint8, pa *tablePriorityAssigner) (*uint16, bool, error) {
-	if !rule.isAntreaNetworkPolicyRule() {
+	if !rule.isAntreaNetworkPolicyRule() || rule.isIGMPEgressPolicyRule() {
 		klog.V(2).Infof("Assigning default priority for k8s NetworkPolicy.")
 		return nil, true, nil
 	}
@@ -467,7 +465,7 @@ func (r *reconciler) BatchReconcile(rules []*CompletedRule) error {
 func (r *reconciler) registerOFPriorities(rules []*CompletedRule) error {
 	prioritiesToRegister := map[uint8][]types.Priority{}
 	for _, rule := range rules {
-		if rule.isAntreaNetworkPolicyRule() {
+		if rule.isAntreaNetworkPolicyRule() && !rule.isIGMPEgressPolicyRule() {
 			ruleTable := r.getOFRuleTable(rule)
 			p := types.Priority{
 				TierPriority:   *rule.TierPriority,

@@ -163,6 +163,18 @@ func (r *CompletedRule) isAntreaNetworkPolicyRule() bool {
 	return r.SourceRef.Type != v1beta.K8sNetworkPolicy
 }
 
+func (r *CompletedRule) isIGMPEgressPolicyRule() bool {
+	if r.Direction == v1beta.DirectionOut {
+		for _, svc := range r.Services {
+			if svc.IGMPType != nil && (*svc.IGMPType == crdv1alpha1.IGMPReportV1 ||
+				*svc.IGMPType == crdv1alpha1.IGMPReportV2 || *svc.IGMPType == crdv1alpha1.IGMPReportV3) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ruleCache caches Antrea AddressGroups, AppliedToGroups and NetworkPolicies,
 // can construct complete rules that can be used by reconciler to enforce.
 type ruleCache struct {

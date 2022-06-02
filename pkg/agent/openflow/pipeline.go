@@ -296,13 +296,6 @@ func GetAntreaPolicyEgressTables() []*Table {
 func GetAntreaIGMPTables() []*Table {
 	return []*Table{
 		MulticastIGMPIngressTable,
-		MulticastRoutingTable,
-	}
-}
-
-func GetAntreaIGMPIngressTables() []*Table {
-	return []*Table{
-		MulticastIGMPIngressTable,
 	}
 }
 
