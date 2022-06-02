@@ -364,13 +364,12 @@ func (r *reconciler) getOFRuleTable(rule *CompletedRule) uint8 {
 		}
 		tableID = ruleTables[1].GetID()
 	case igmp:
+		ruleTables = openflow.GetAntreaIGMPTables()
 		if rule.Direction == v1beta2.DirectionIn {
-			ruleTables = openflow.GetAntreaIGMPIngressTables()
+			tableID = ruleTables[0].GetID()
 		} else {
-			ruleTables = openflow.GetAntreaIGMPEgressTables()
+			tableID = ruleTables[1].GetID()
 		}
-		tableID = ruleTables[0].GetID()
-
 	case multicast:
 		// Multicast NetworkPolicy only supports egress so far, we leave tableID as 0
 		// for ingress rules for multicast, later we will return empty flows for it.

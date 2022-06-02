@@ -260,7 +260,6 @@ func TestBuildPipeline(t *testing.T) {
 					ARPResponderTable,
 				},
 				pipelineMulticast: {
-					MulticastIGMPEgressTable,
 					MulticastEgressRuleTable,
 					MulticastEgressMetricTable,
 

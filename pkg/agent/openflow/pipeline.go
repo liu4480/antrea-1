@@ -180,7 +180,6 @@ var (
 	// Tables in stageEgressSecurity:
 	// Since IGMP Egress rules only support IGMP report which is handled by packetIn, it is not necessary to add
 	// MulticastIGMPEgressMetricTable here.
-	MulticastIGMPEgressTable   = newTable("MulticastIGMPEgress", stageEgressSecurity, pipelineMulticast)
 	MulticastEgressRuleTable   = newTable("MulticastEgressRule", stageEgressSecurity, pipelineMulticast)
 	MulticastEgressMetricTable = newTable("MulticastEgressMetric", stageEgressSecurity, pipelineMulticast)
 	// Tables in stageRouting:
@@ -296,14 +295,8 @@ func GetAntreaPolicyEgressTables() []*Table {
 
 func GetAntreaIGMPTables() []*Table {
 	return []*Table{
-		MulticastIGMPEgressTable,
 		MulticastIGMPIngressTable,
-	}
-}
-
-func GetAntreaIGMPEgressTables() []*Table {
-	return []*Table{
-		MulticastIGMPEgressTable,
+		MulticastRoutingTable,
 	}
 }
 
@@ -1635,7 +1628,6 @@ func (f *featureNetworkPolicy) allowRulesMetricFlows(conjunctionID uint32, ingre
 	if metricTable == MulticastEgressMetricTable || metricTable == MulticastIngressMetricTable {
 		flow := metricTable.ofTable.BuildFlow(priorityNormal).
 			Cookie(f.cookieAllocator.Request(f.category).Raw()).
-			MatchRegMark(DispositionAllowRegMark).
 			MatchRegFieldWithValue(CNPConjIDField, conjunctionID).
 			Action().GotoTable(metricTable.GetNext()).
 			Done()
@@ -1771,7 +1763,7 @@ func (f *featureNetworkPolicy) conjunctionActionFlow(conjunctionID uint32, table
 	if f.enableMulticast && (tableID == MulticastEgressRuleTable.GetID() || tableID == MulticastIGMPIngressTable.GetID()) {
 		flow := table.BuildFlow(ofPriority).MatchConjID(conjunctionID).
 			Action().LoadToRegField(CNPConjIDField, conjunctionID).
-			Action().LoadRegMark(DispositionAllowRegMark).Action().NextTable().
+			Action().NextTable().
 			Cookie(f.cookieAllocator.Request(f.category).Raw()).
 			Done()
 		flows = append(flows, flow)
@@ -2656,20 +2648,16 @@ func pipelineClassifyFlow(cookieID uint64, protocol binding.Protocol, pipeline b
 		Done()
 }
 
-// igmpPktInFlows generates the flow to load CustomReasonIGMPRegMark to mark the IGMP packet in MulticastIGMPEgressTable
-// if multicast enabled or in MulticastRoutingTable if not and sends it to antrea-agent.
+// igmpPktInFlows generates the flow to load CustomReasonIGMPRegMark to mark the IGMP packet in MulticastRoutingTable
+// if not and sends it to antrea-agent.
 func (f *featureMulticast) igmpPktInFlows(reason uint8) []binding.Flow {
-	table := MulticastIGMPEgressTable
-	if !f.enableAntreaPolicy {
-		table = MulticastRoutingTable
-	}
 	flows := []binding.Flow{
 		// Set a custom reason for the IGMP packets, and then send it to antrea-agent and forward it normally in the
 		// OVS bridge, so that the OVS multicast db cache can be updated, and antrea-agent can identify the local multicast
 		// group and its members in the meanwhile.
 		// Do not set dst IP address because IGMPv1 report message uses target multicast group as IP destination in
 		// the packet.
-		table.ofTable.BuildFlow(priorityHigh).
+		MulticastRoutingTable.ofTable.BuildFlow(priorityHigh).
 			Cookie(f.cookieAllocator.Request(f.category).Raw()).
 			MatchProtocol(binding.ProtocolIGMP).
 			MatchRegMark(FromLocalRegMark).

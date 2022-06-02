@@ -211,7 +211,6 @@ func (f *featureNetworkPolicy) getRequiredTables() []*Table {
 		)
 		if f.enableMulticast {
 			tables = append(tables,
-				MulticastIGMPEgressTable,
 				MulticastEgressRuleTable,
 				MulticastEgressMetricTable,
 				MulticastIGMPIngressTable,
@@ -259,7 +258,6 @@ func (f *featureMulticast) getRequiredTables() []*Table {
 	}
 	if f.enableAntreaPolicy {
 		tables = append(tables,
-			MulticastIGMPEgressTable,
 			MulticastIGMPIngressTable,
 		)
 	}
