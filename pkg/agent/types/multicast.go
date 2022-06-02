@@ -39,5 +39,5 @@ type MulticastValidator interface {
 	// Validate checks whether IGMP report from Pod(podNamespace/podName) to groupAddress should be dropped,
 	// and returns multicast NetworkPolicy information.
 	// TODO: refacor the function name and return type here
-	Validate(podname, podNamespace string, groupAddress net.IP) (McastNPValidationItem, error)
+	Validate(podname, podNamespace string, groupAddress net.IP, igmpType uint8, direction v1beta2.Direction) (McastNPValidationItem, error)
 }

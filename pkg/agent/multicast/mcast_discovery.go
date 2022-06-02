@@ -29,6 +29,7 @@ import (
 	"antrea.io/antrea/pkg/agent/interfacestore"
 	"antrea.io/antrea/pkg/agent/openflow"
 	"antrea.io/antrea/pkg/agent/types"
+	"antrea.io/antrea/pkg/apis/controlplane/v1beta2"
 	"antrea.io/antrea/pkg/apis/crd/v1alpha1"
 )
 
@@ -111,7 +112,7 @@ func (s *IGMPSnooper) queryIGMP(group net.IP, versions []uint8) error {
 	return nil
 }
 
-func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
+func (s *IGMPSnooper) validate(event *mcastGroupEvent, igmpType uint8) (bool, error) {
 	if s.validator == nil {
 		// Do not need to validate if the packet should be dropped since Validator is null, thus here returns directly
 		return true, nil
@@ -120,7 +121,7 @@ func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
 		return true, fmt.Errorf("interface is not container")
 	}
 	// Validates check if packet should be dropped or not, and return multicast NP information
-	item, err := s.validator.Validate(event.iface.PodName, event.iface.PodNamespace, event.group)
+	item, err := s.validator.Validate(event.iface.PodName, event.iface.PodNamespace, event.group, igmpType, v1beta2.DirectionOut)
 	if err != nil {
 		// It shall drop the packet if function Validate returns error
 		klog.ErrorS(err, "Failed to validate multicast group event")
@@ -133,8 +134,8 @@ func (s *IGMPSnooper) validate(event *mcastGroupEvent) (bool, error) {
 	return true, nil
 }
 
-func (s *IGMPSnooper) validatePacketAndNotify(event *mcastGroupEvent) {
-	allow, err := s.validate(event)
+func (s *IGMPSnooper) validatePacketAndNotify(event *mcastGroupEvent, igmpType uint8) {
+	allow, err := s.validate(event, igmpType)
 	if err != nil {
 		// Antrea Agent does not remove the Pod from the OpenFlow group bucket immediately when an error is returned,
 		// but it will be removed when after timeout (Controller.mcastGroupTimeout)
@@ -163,7 +164,8 @@ func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
 	if err != nil {
 		return err
 	}
-	switch igmp.GetMessageType() {
+	igmpType := igmp.GetMessageType()
+	switch igmpType {
 	case protocol.IGMPv1Report:
 		fallthrough
 	case protocol.IGMPv2Report:
@@ -175,7 +177,7 @@ func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
 			time:  now,
 			iface: iface,
 		}
-		s.validatePacketAndNotify(event)
+		s.validatePacketAndNotify(event, igmpType)
 	case protocol.IGMPv3Report:
 		msg := igmp.(*protocol.IGMPv3MembershipReport)
 		for _, gr := range msg.GroupRecords {
@@ -191,7 +193,7 @@ func (s *IGMPSnooper) processPacketIn(pktIn *ofctrl.PacketIn) error {
 				time:  now,
 				iface: iface,
 			}
-			s.validatePacketAndNotify(event)
+			s.validatePacketAndNotify(event, igmpType)
 		}
 
 	case protocol.IGMPv2LeaveGroup:

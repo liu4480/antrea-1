@@ -484,9 +484,18 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	<-stopCh
 }
 
+func (c *Controller) matchIGMPType(r *rule, igmpType uint8) bool {
+	for _, s := range r.Services {
+		if s.IGMPType != nil && uint8(*s.IGMPType) == igmpType {
+			return true
+		}
+	}
+	return false
+}
+
 // validate checks if there is rule to drop or allow IGMP report from a Pod to a group Address, and returns multicast
 // NetworkPolicy Information
-func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP, direction v1beta2.Direction) (types.McastNPValidationItem, error) {
+func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP, igmpType uint8, direction v1beta2.Direction) (types.McastNPValidationItem, error) {
 	var ruleTypePtr *v1beta2.NetworkPolicyType
 	action, uuid, ruleName := v1alpha1.RuleActionAllow, apitypes.UID(""), ""
 	member := &v1beta2.GroupMember{
@@ -507,7 +516,7 @@ func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP,
 			continue
 		}
 		if groupMembers.Has(member) && direction == rule.Direction &&
-			(matchedRule == nil || matchedRule.Less(rule)) {
+			(matchedRule == nil || matchedRule.Less(rule)) && c.matchIGMPType(rule, igmpType) {
 			matchedRule = rule
 		}
 	}
@@ -524,8 +533,8 @@ func (c *Controller) validate(podName, podNamespace string, groupAddress net.IP,
 	}, nil
 }
 
-func (c *Controller) Validate(podName, podNamespace string, groupAddress net.IP) (types.McastNPValidationItem, error) {
-	return c.validate(podName, podNamespace, groupAddress, v1beta2.DirectionOut)
+func (c *Controller) Validate(podName, podNamespace string, groupAddress net.IP, igmpType uint8, direction v1beta2.Direction) (types.McastNPValidationItem, error) {
+	return c.validate(podName, podNamespace, groupAddress, igmpType, direction)
 }
 
 func (c *Controller) enqueueRule(ruleID string) {
