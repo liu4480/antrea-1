@@ -629,6 +629,7 @@ func TestValidate(t *testing.T) {
 	appliedToGroup.Insert()
 	tierPriority01 := int32(100)
 	policyPriority01 := float64(10)
+	proto := v1beta2.ProtocolIGMP
 	rule1 := &rule{
 		ID:   "rule1",
 		Name: "rule01",
@@ -637,6 +638,7 @@ func TestValidate(t *testing.T) {
 		},
 		Services: []v1beta2.Service{
 			{
+				Protocol:     &proto,
 				IGMPType:     &igmpType,
 				GroupAddress: "225.1.2.3",
 			},
@@ -656,6 +658,7 @@ func TestValidate(t *testing.T) {
 		},
 		Services: []v1beta2.Service{
 			{
+				Protocol:     &proto,
 				IGMPType:     &igmpType,
 				GroupAddress: "",
 			},
