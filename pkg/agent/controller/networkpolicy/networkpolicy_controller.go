@@ -484,9 +484,10 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (c *Controller) matchIGMPType(r *rule, igmpType uint8) bool {
+func (c *Controller) matchIGMPType(r *rule, igmpType uint8, groupAddress string) bool {
 	for _, s := range r.Services {
-		if s.IGMPType != nil && uint8(*s.IGMPType) == igmpType {
+		if *s.Protocol == v1beta2.ProtocolIGMP && s.IGMPType == nil && (s.GroupAddress == groupAddress || s.GroupAddress == "") ||
+			s.IGMPType != nil && uint8(*s.IGMPType) == igmpType && (s.GroupAddress == groupAddress || s.GroupAddress == "") {
 			return true
 		}
 	}
@@ -516,7 +517,7 @@ func (c *Controller) Validate(podName, podNamespace string, groupAddress net.IP,
 			continue
 		}
 		if groupMembers.Has(member) && direction == rule.Direction &&
-			(matchedRule == nil || matchedRule.Less(rule)) && c.matchIGMPType(rule, igmpType) {
+			(matchedRule == nil || matchedRule.Less(rule)) && c.matchIGMPType(rule, igmpType, groupAddress.String()) {
 			matchedRule = rule
 		}
 	}

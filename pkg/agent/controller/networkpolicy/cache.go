@@ -166,8 +166,8 @@ func (r *CompletedRule) isAntreaNetworkPolicyRule() bool {
 func (r *CompletedRule) isIGMPEgressPolicyRule() bool {
 	if r.Direction == v1beta.DirectionOut {
 		for _, svc := range r.Services {
-			if svc.IGMPType != nil && (*svc.IGMPType == crdv1alpha1.IGMPReportV1 ||
-				*svc.IGMPType == crdv1alpha1.IGMPReportV2 || *svc.IGMPType == crdv1alpha1.IGMPReportV3) {
+			if *svc.Protocol == v1beta.ProtocolIGMP && svc.IGMPType == nil ||
+				svc.IGMPType != nil && (*svc.IGMPType == crdv1alpha1.IGMPReportV1 || *svc.IGMPType == crdv1alpha1.IGMPReportV2 || *svc.IGMPType == crdv1alpha1.IGMPReportV3) {
 				return true
 			}
 		}
@@ -377,13 +377,15 @@ func toServicesIndexFunc(obj interface{}) ([]string, error) {
 	return toSvcNamespacedName.UnsortedList(), nil
 }
 
-// toMcastGroupAddressIndexFunc knows how to get IGMP report groupAddresses of a *rule
+// toIGMPReportGroupAddressIndexFunc knows how to get IGMP report groupAddresses of a *rule
 // It's provided to cache.Indexer to build an index of NetworkPolicy.
 func toIGMPReportGroupAddressIndexFunc(obj interface{}) ([]string, error) {
 	rule := obj.(*rule)
 	mcastGroupAddresses := sets.String{}
 	for _, svc := range rule.Services {
-		if svc.IGMPType != nil && (*svc.IGMPType == crdv1alpha1.IGMPReportV1 || *svc.IGMPType == crdv1alpha1.IGMPReportV2 || *svc.IGMPType == crdv1alpha1.IGMPReportV3) {
+		if *svc.Protocol == v1beta.ProtocolIGMP && svc.IGMPType == nil ||
+			svc.IGMPType != nil && (*svc.IGMPType == crdv1alpha1.IGMPReportV1 || *svc.IGMPType == crdv1alpha1.IGMPReportV2 ||
+				*svc.IGMPType == crdv1alpha1.IGMPReportV3 || *svc.IGMPType == 0) {
 			mcastGroupAddresses.Insert(svc.GroupAddress)
 		}
 	}
