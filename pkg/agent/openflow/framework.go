@@ -216,12 +216,10 @@ func (f *featureNetworkPolicy) getRequiredTables() []*Table {
 		if f.enableMulticast {
 			tables = append(tables,
 				MulticastEgressRuleTable,
+				MulticastEgressPodMetricTable,
 				MulticastEgressMetricTable,
 				MulticastIngressRuleTable,
 				MulticastIngressPodMetricTable,
-				MulticastEgressRuleTable,
-				MulticastEgressMetricTable,
-				MulticastEgressPodMetricTable,
 				MulticastIngressMetricTable,
 			)
 		}
@@ -269,6 +267,13 @@ func (f *featureMulticast) getRequiredTables() []*Table {
 		MulticastOutputTable,
 		MulticastEgressPodMetricTable,
 		MulticastIngressPodMetricTable,
+	}
+	if f.enableAntreaPolicy {
+		tables = append(tables,
+			MulticastEgressRuleTable,
+			MulticastEgressMetricTable,
+			MulticastIngressRuleTable,
+			MulticastEgressMetricTable)
 	}
 	return tables
 }
