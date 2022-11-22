@@ -3,8 +3,8 @@ module antrea.io/antrea
 go 1.17
 
 require (
-	antrea.io/libOpenflow v0.6.1
-	antrea.io/ofnet v0.2.3
+	antrea.io/libOpenflow v0.9.2
+	antrea.io/ofnet v0.6.7
 	github.com/Mellanox/sriovnet v1.0.2
 	github.com/Microsoft/go-winio v0.4.16-0.20201130162521-d1ffc52c7331
 	github.com/Microsoft/hcsshim v0.8.9
@@ -62,7 +62,7 @@ require (
 	k8s.io/apiserver v0.21.0
 	k8s.io/client-go v0.21.0
 	k8s.io/component-base v0.21.0
-	k8s.io/klog/v2 v2.8.0
+	k8s.io/klog/v2 v2.60.1
 	k8s.io/kube-aggregator v0.21.0
 	k8s.io/kube-openapi v0.0.0-20210305164622-f622666832c1
 	k8s.io/kubectl v0.21.0
@@ -87,7 +87,7 @@ require (
 	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
 	github.com/evanphx/json-patch v4.9.0+incompatible // indirect
 	github.com/fatih/color v1.10.0 // indirect
-	github.com/go-logr/logr v0.4.0 // indirect
+	github.com/go-logr/logr v1.2.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.3 // indirect
 	github.com/go-openapi/jsonreference v0.19.3 // indirect
 	github.com/go-openapi/swag v0.19.5 // indirect
